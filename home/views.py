@@ -970,31 +970,31 @@ def staff_user(request):
         else:
             leads2 = Team_LeadData.objects.none()
         not_interested_inquiry_data = ""
-        if user.dsr_manager:
-            not_interested_inquiry_data = MerchantInquiry.objects.filter(is_interested=False).order_by('-id')
-        executive_manager_inquiry_data = []
-        interested_count = 0
-        not_interested_count = 0
-        new_inquiries_count = 0
-        pending_inquiries_count =  0 
-        completed_inquiries_count = 0
-        if user.executive_manager:
-                executive_manager_inquiry_data = MerchantInquiry.objects.filter(submitted_by=user).order_by("-id")
-                interested_count = executive_manager_inquiry_data.filter(submitted_by=user, is_interested=True).count()
-                not_interested_count = executive_manager_inquiry_data.filter(submitted_by=user, is_interested=False).count()
-                new_inquiries_count = executive_manager_inquiry_data.filter(submitted_by=user, inquiry_status='New Inquiry').count()
-        on_boarding_manager_inquiry_data = []
+        # if user.dsr_manager:
+        #     not_interested_inquiry_data = MerchantInquiry.objects.filter(is_interested=False).order_by('-id')
+        # executive_manager_inquiry_data = []
+        # interested_count = 0
+        # not_interested_count = 0
+        # new_inquiries_count = 0
+        # pending_inquiries_count =  0 
+        # completed_inquiries_count = 0
+        # if user.executive_manager:
+        #         executive_manager_inquiry_data = MerchantInquiry.objects.filter(submitted_by=user).order_by("-id")
+        #         interested_count = executive_manager_inquiry_data.filter(submitted_by=user, is_interested=True).count()
+        #         not_interested_count = executive_manager_inquiry_data.filter(submitted_by=user, is_interested=False).count()
+        #         new_inquiries_count = executive_manager_inquiry_data.filter(submitted_by=user, inquiry_status='New Inquiry').count()
+        # on_boarding_manager_inquiry_data = []
 
-        if user.on_boarding_manager:
-                on_boarding_manager_inquiry_data = MerchantInquiry.objects.filter(assigned_user=user).order_by("-id")
-                interested_count = on_boarding_manager_inquiry_data.filter(assigned_user=user, is_interested=True).count()
-                new_inquiries_count = on_boarding_manager_inquiry_data.filter(assigned_user = user, inquiry_status='New Inquiry').count()
-        delivery_manager_inquiry_data = []        
-        if user.delivery_manager :
-                delivery_manager_inquiry_data = MerchantInquiry.objects.filter(assigned_user=user).order_by("-id")
-                pending_inquiries_count = delivery_manager_inquiry_data.filter(assigned_user = user, inquiry_status='Pending Delivery').count()
-                completed_inquiries_count = delivery_manager_inquiry_data.filter(assigned_user = user, inquiry_status='Completed').count()
-                new_inquiries_count = delivery_manager_inquiry_data.filter(assigned_user = user, inquiry_status='New Inquiry').count()
+        # if user.on_boarding_manager:
+        #         on_boarding_manager_inquiry_data = MerchantInquiry.objects.filter(assigned_user=user).order_by("-id")
+        #         interested_count = on_boarding_manager_inquiry_data.filter(assigned_user=user, is_interested=True).count()
+        #         new_inquiries_count = on_boarding_manager_inquiry_data.filter(assigned_user = user, inquiry_status='New Inquiry').count()
+        # delivery_manager_inquiry_data = []        
+        # if user.delivery_manager :
+        #         delivery_manager_inquiry_data = MerchantInquiry.objects.filter(assigned_user=user).order_by("-id")
+        #         pending_inquiries_count = delivery_manager_inquiry_data.filter(assigned_user = user, inquiry_status='Pending Delivery').count()
+        #         completed_inquiries_count = delivery_manager_inquiry_data.filter(assigned_user = user, inquiry_status='Completed').count()
+        #         new_inquiries_count = delivery_manager_inquiry_data.filter(assigned_user = user, inquiry_status='New Inquiry').count()
 
         context = {
             'user_logs': user_logs,
@@ -1020,14 +1020,14 @@ def staff_user(request):
             'visits_leads_instance': visits_leads_instance,
             'setting': setting,
             'not_interested_inquiry_data':not_interested_inquiry_data,
-            'executive_manager_inquiry_data' : executive_manager_inquiry_data,
-            'on_boarding_manager_inquiry_data': on_boarding_manager_inquiry_data,
-            'interested_count': interested_count,
-            'not_interested_count': not_interested_count,
-            'new_inquiries_count': new_inquiries_count,
-            'delivery_manager_inquiry_data': delivery_manager_inquiry_data,
-            'pending_inquiries_count' : pending_inquiries_count,
-            'completed_inquiries_count':completed_inquiries_count
+            # 'executive_manager_inquiry_data' : executive_manager_inquiry_data,
+            # 'on_boarding_manager_inquiry_data': on_boarding_manager_inquiry_data,
+            # 'interested_count': interested_count,
+            # 'not_interested_count': not_interested_count,
+            # 'new_inquiries_count': new_inquiries_count,
+            # 'delivery_manager_inquiry_data': delivery_manager_inquiry_data,
+            # 'pending_inquiries_count' : pending_inquiries_count,
+            # 'completed_inquiries_count':completed_inquiries_count
 
             }
 

@@ -3317,64 +3317,71 @@ class StandardResultsSetPagination(PageNumberPagination):
     page_size_query_param = 'page_size'
     max_page_size = 1000
 
+    
 class VisitLeadsAPIView(APIView):
-    permission_classes = [IsAuthenticated, CustomIsSuperuser]  # Add your custom permission class if needed
+    """
+    GET /accounts/api/leads/visit/?tag=<tag>&search=<q>
+    - If tag is provided it MUST be one of allowed_tags, otherwise returns 400.
+    - If no tag provided, returns full list (or filtered by search).
+    """
+    permission_classes = [IsAuthenticated]   # change if you want stricter access
     pagination_class = StandardResultsSetPagination
 
-    def get(self, request, tag, format=None):
+    # allowed tags (lowercase). include common typo if you want
+    ALLOWED_TAGS = {"pending_follow", "today_follow", "tomorrow_follow"}
+
+    def get(self, request, format=None):
+        # get and normalize tag/search
+        tag = (request.query_params.get("tag") or "").strip().lower()
+        search_query = (request.query_params.get("search") or "").strip()
+
+        # If tag provided, validate it
+        if tag:
+            if tag not in self.ALLOWED_TAGS:
+                return Response({
+                    "error": "Invalid tag provided.",
+                    "provided_tag": tag,
+                    "allowed_tags": sorted(list(self.ALLOWED_TAGS))
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # normalize synonyms (map tommorrow typo to canonical)
+            if tag in ("tommorrow_follow", "tomorrow_follow"):
+                tag = "tomorrow_follow"
 
         today = timezone.now().date()
         tomorrow = today + timedelta(days=1)
-        user_email = request.user.email
-        team_leader = Team_Leader.objects.filter(email=user_email).last()
 
-        search_query = request.query_params.get('search', '')
+        # status constant (adjust if DB uses different spelling)
+        STATUS_INTERESTED = "Intrested"
 
-        # Base queryset depending on role and tag
+        # Base queryset
+        queryset = LeadUser.objects.filter(status=STATUS_INTERESTED)
+
+        # Search handling (search should be allowed even without tag)
         if search_query:
-            interested_leads = LeadUser.objects.filter(
+            queryset = queryset.filter(
                 Q(name__icontains=search_query) |
                 Q(call__icontains=search_query) |
-                Q(team_leader__name__icontains=search_query),
-                status='Intrested'
-            )
-        elif request.user.is_superuser:
-            if tag == 'pending_follow':
-                interested_leads = LeadUser.objects.filter(status='Intrested', follow_up_date__isnull=False).order_by('-updated_date')
-            elif tag == 'today_follow':
-                interested_leads = LeadUser.objects.filter(status='Intrested', follow_up_date=today).order_by('-updated_date')
-            elif tag == 'tommorrow_follow':
-                interested_leads = LeadUser.objects.filter(status='Intrested', follow_up_date=tomorrow).order_by('-updated_date')
-            else:
-                interested_leads = LeadUser.objects.filter(status='Intrested').order_by('-updated_date')
-        elif request.user.is_team_leader:
-            if not team_leader:
-                return Response({"error": "Team Leader profile not found."}, status=404)
-            if tag == 'pending_follow':
-                interested_leads = LeadUser.objects.filter(status='Intrested', follow_up_date__isnull=False, team_leader=team_leader).order_by('-updated_date')
-            elif tag == 'today_follow':
-                interested_leads = LeadUser.objects.filter(status='Intrested', follow_up_date=today, team_leader=team_leader).order_by('-updated_date')
-            elif tag == 'tommorrow_follow':
-                interested_leads = LeadUser.objects.filter(status='Intrested', follow_up_date=tomorrow, team_leader=team_leader).order_by('-updated_date')
-            else:
-                interested_leads = LeadUser.objects.filter(follow_up_time__isnull=True, team_leader=team_leader, status='Intrested').order_by('-updated_date')
+                Q(team_leader__name__icontains=search_query)
+            ).order_by("-updated_date")
         else:
-            if not team_leader:
-                interested_leads = Team_LeadData.objects.none()
+            # tag-based filtering only when tag provided
+            if tag == "pending_follow":
+                queryset = queryset.filter(follow_up_date__isnull=False).order_by("-updated_date")
+            elif tag == "today_follow":
+                queryset = queryset.filter(follow_up_date=today).order_by("-updated_date")
+            elif tag == "tomorrow_follow":
+                queryset = queryset.filter(follow_up_date=tomorrow).order_by("-updated_date")
             else:
-                interested_leads = Team_LeadData.objects.filter(team_leader=team_leader, status='Intrested')
+                # no tag -> return all (ordered)
+                queryset = queryset.order_by("-updated_date")
 
-        # Pagination setup
+        # Pagination + serialize
         paginator = self.pagination_class()
-        page = paginator.paginate_queryset(interested_leads, request, view=self)
+        page = paginator.paginate_queryset(queryset, request, view=self)
+        serializer = ApiLeadUserSerializer(page, many=True)
 
-        # Select suitable serializer per queryset
-        if request.user.is_superuser or request.user.is_team_leader:
-            serializer = ApiLeadUserSerializer(page, many=True)
-        else:
-            serializer = ApiTeamLeadDataSerializer(page, many=True)
-
-        return paginator.get_paginated_response(serializer.data)    
+        return paginator.get_paginated_response(serializer.data)
 
 # ==========================================================
 # API: PROJECT (LIST & CREATE)
@@ -3835,6 +3842,7 @@ class AdminStaffDashboardAPIView(APIView):
 
             staff_list_data.append({
                 'id': staff.id,
+                'user_id': staff.user.id,
                 'name': staff.name,
                 'team_leader_name': staff.team_leader.name if staff.team_leader else "N/A",
                 'mobile': staff.mobile,
@@ -7155,7 +7163,7 @@ class TeamCustomerAPIView(APIView):
         Now requires a tag. Valid tags: pending_follow, today_follow, tommorrow_follow
         Supports both query-param (?tag=...) and path-param (/api/teamcustomer/<tag>/)
         """
-        VALID_TAGS = ['pending_follow', 'today_follow', 'tommorrow_follow']
+        VALID_TAGS = ['pending_follow', 'today_follow', 'tommorrow_follow','interested']
 
         # prefer query param, fallback to path param
         tag_q = request.query_params.get('tag')
@@ -7175,6 +7183,8 @@ class TeamCustomerAPIView(APIView):
                 "detail": f"Invalid tag '{tag}'. Valid tags: " + ", ".join(VALID_TAGS),
                 "valid_tags": VALID_TAGS
             }, status=400)
+        
+        
 
         # tag is present and valid — continue normal processing
         user = request.user
@@ -7205,6 +7215,9 @@ class TeamCustomerAPIView(APIView):
                 qs = LeadUser.objects.filter(status='Intrested', follow_up_date=today).order_by('-updated_date')
             elif tag == 'tommorrow_follow':
                 qs = LeadUser.objects.filter(status='Intrested', follow_up_date=tomorrow).order_by('-updated_date')
+            elif tag == 'interested':
+                qs = LeadUser.objects.filter(status='Intrested').order_by('-updated_date')
+
 
         # Always restrict to this team_leader's leads to match original behavior
         if team_leader:
@@ -8002,58 +8015,63 @@ def user_has_field(field_name):
         return True
     except Exception:
         return False
+    
+
 # home/api.py
 
+
 class AdminToggleStatusAPIView(APIView):
-    """
-    API for Admin to toggle Active/Inactive status of their Staff or Team Leaders.
-    POST: Toggles the 'user_active' field.
-    ONLY ADMIN can access this for their own team.
-    """
     permission_classes = [IsAuthenticated, IsCustomAdminUser]
 
-    def post(self, request, user_id, format=None):
-        # 1. Get Target User
+    def post(self, request, user_id):
+        # 1) Ensure request.user is authenticated
+        if not request.user or not request.user.is_authenticated:
+            return Response({"error": "Authentication required. Provide valid token/session."}, status=401)
+
+        # 2) Try multiple possible field names for Admin relation (robust)
+        admin_obj = None
+        possible_fields = ["user", "self_user", "admin_user"]  # adjust if your model uses different name
+        for field in possible_fields:
+            lookup = {f"{field}": request.user}
+            try:
+                admin_obj = Admin.objects.get(**lookup)
+                break
+            except Admin.DoesNotExist:
+                continue
+
+        if not admin_obj:
+            # More helpful debugging info to return (safe): show request.user.pk and a hint
+            return Response({
+                "error": "Admin profile not found for the authenticated user.",
+                "hint": "Check Admin model relation field (user/self_user/admin_user) and that the logged-in user is an admin.",
+                "request_user_id": getattr(request.user, "id", None),
+                "request_user_username": getattr(request.user, "username", None)
+            }, status=404)
+
+        # 3) Get target user
         try:
             target_user = User.objects.get(id=user_id)
         except User.DoesNotExist:
-            return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"error": "Target user not found."}, status=404)
 
-        # 2. Get Logged-in Admin Profile
-        try:
-            current_admin = Admin.objects.get(self_user=request.user)
-        except Admin.DoesNotExist:
-            return Response({"error": "Admin profile not found."}, status=status.HTTP_404_NOT_FOUND)
-
-        # 3. Security Check: Is the user under this Admin?
-        is_authorized = False
-
-        # A. Agar Target Team Leader hai
-        if target_user.is_team_leader:
-            # Check karo kya ye TL is Admin ka hai?
-            if Team_Leader.objects.filter(user=target_user, admin=current_admin).exists():
-                is_authorized = True
-
-        # B. Agar Target Staff hai
-        elif target_user.is_staff_new:
-            # Check karo kya ye Staff is Admin ke kisi TL ke under hai?
-            if Staff.objects.filter(user=target_user, team_leader__admin=current_admin).exists():
-                is_authorized = True
+        # 4) Authorization: is target under this admin?
+        is_authorized = Team_Leader.objects.filter(user=target_user, admin=admin_obj).exists() \
+                        or Staff.objects.filter(user=target_user, team_leader__admin=admin_obj).exists()
 
         if not is_authorized:
-            return Response({"error": "Permission denied. This user is not under your administration."}, status=status.HTTP_403_FORBIDDEN)
+            return Response({"error": "Permission denied. This user is not under your administration."}, status=403)
 
-        # 4. Perform Toggle
+        # 5) Toggle and save
         target_user.user_active = not target_user.user_active
         target_user.save()
 
-        status_msg = "Active" if target_user.user_active else "Inactive"
-        
         return Response({
-            "message": f"User is now {status_msg}",
+            "message": f"User is now {'Active' if target_user.user_active else 'Inactive'}",
             "user_id": target_user.id,
             "user_active": target_user.user_active
-        }, status=status.HTTP_200_OK)
+        }, status=200)
+
+
 
 
 # ==========================================================

@@ -22,6 +22,17 @@ def generate_uid(prefix="U"):
     return f"{prefix}{shortuuid.uuid()[:6].upper()}"
 
 
+ROLES = (
+     ("SuperAdmin", "SuperAdmin"),
+    ("admin", "Admin"),
+    ("team_leader", "Team Leader"),
+    ("staff", "Staff"),
+   
+)
+
+role = models.CharField(max_length=20, choices=ROLES, default="staff")
+
+
 # ----------------------------------------------------------------------
 # Profile
 # ----------------------------------------------------------------------

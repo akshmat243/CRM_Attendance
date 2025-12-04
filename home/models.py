@@ -359,7 +359,7 @@ class Task(models.Model):
     updated_date    = models.DateTimeField(auto_now=True)
 
 class Attendance(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='home_attendance')
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
     date = models.DateField(auto_now_add=True)
     is_present = models.BooleanField(default=False)
     created_date    = models.DateTimeField(auto_now_add=True)

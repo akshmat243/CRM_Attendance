@@ -524,7 +524,7 @@ class TeamLeaderCreateSerializer(serializers.ModelSerializer):
             'address', 'city', 'state', 'pincode', 'dob', 'pancard', 
             'aadharCard', 'marksheet', 'degree', 'account_number', 
             'upi_id', 'bank_name', 'ifsc_code', 'salary',
-            'admin_id', 'on_boarding_manager', 'dsr_manager', 'executive_manager', 'delivery_manager'
+            'admin_id'
         ]
         extra_kwargs = {'email': {'required': True}}
 
