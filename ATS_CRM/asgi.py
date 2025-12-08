@@ -7,7 +7,7 @@ from channels.routing import ProtocolTypeRouter, URLRouter
 from channels.auth import AuthMiddlewareStack
 import home.routing
 
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'Vrindavan.settings')
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'ATS_CRM.settings')
 
 application = ProtocolTypeRouter({
     "http": get_asgi_application(),

@@ -52,7 +52,7 @@ schema_view = get_schema_view(
 # -------------------------------------------------------
 
 urlpatterns = [
-    path('admin/', admin.site.urls),
+    # path('admin/', admin.site.urls),
 
     # Attendance APIs
     path('checkin/', check_in, name='checkin'),
@@ -62,20 +62,20 @@ urlpatterns = [
     path('attendance/by-date/', attendance_by_date, name='attendance_by_date'),
     path('attendance/status/by-date/', present_absent_by_date, name='attendance_status_by_date'),
     path('attendance/month/', attendance_month, name='attendance_month_view'),
-    path('register/', register_user, name='register'),
+    # path('register/', register_user, name='register'),
     path('delete-user/<str:user_uid>/<str:uid>/',delete_user,name='delete-user-secure'),
 
     # Auth
-    path('login/', TokenObtainPairView.as_view(), name='login'),
-    path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    # path('login/', TokenObtainPairView.as_view(), name='login'),
+    # path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
 
     # ----- REMOVE this line -----
     # path('', include(router.urls)),
     # ---------------------------
 
     # Swagger
-    path('swagger/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
-    path('redoc/', schema_view.with_ui('redoc', cache_timeout=0), name='schema-redoc'),
+    # path('swagger/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
+    # path('redoc/', schema_view.with_ui('redoc', cache_timeout=0), name='schema-redoc'),
 
     # Misc
     path('attendance/export/excel/', export_attendance_excel, name='export_attendance_excel'),
