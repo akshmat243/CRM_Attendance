@@ -19,26 +19,53 @@ class User(AbstractUser):
     name            = models.CharField(max_length=200, null=True, blank=True)
     mobile          = models.CharField(max_length=200, unique=True)
     email           = models.CharField(max_length=200, unique=True)
+
+    # Existing boolean flags
     is_admin        = models.BooleanField(default=False)
     is_team_leader  = models.BooleanField(default=False)
     is_staff_new    = models.BooleanField(default=False)
     is_freelancer   = models.BooleanField(default=False)
     is_it_staff     = models.BooleanField(default=False)
+
+    # NEW SUPERUSER ROLE FLAG
+    is_super_user  = models.BooleanField(default=False)
+
+    # NEW ROLE FIELD (needed for accounts app)
+    ROLES = (
+        ("super_user", "Super User"),
+        ("admin", "Admin"),
+        ("team_leader", "Team Leader"),
+        ("staff", "Staff"),
+        ("freelancer", "Freelancer"),
+    )
+    role = models.CharField(max_length=20, choices=ROLES, default="staff")
+
     login_time      = models.DateTimeField(default=timezone.now)
     logout_time     = models.DateTimeField(null=True, blank=True)
-    profile_image   = models.FileField(upload_to ='profile_image/', null=True, blank=True)
+    profile_image   = models.FileField(upload_to='profile_image/', null=True, blank=True)
     created_date    = models.DateTimeField(auto_now_add=True)
     updated_date    = models.DateTimeField(auto_now=True)
     user_active     = models.BooleanField(default=False)
     is_user_login   = models.BooleanField(default=False)
-    # on_boarding_manager  = models.BooleanField(default=False,null=True, blank=True)
-    # dsr_manager          =  models.BooleanField(default=False, null=True, blank=True)
-    # executive_manager    =   models.BooleanField(default=False,null=True, blank=True)
-    # delivery_manager     = models.BooleanField(default=False,null=True, blank=True)
-    
+
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = ['username', 'mobile']
-    
+
+    # AUTO-SYNC BETWEEN BOOLEAN FIELDS → ROLE FIELD
+    def save(self, *args, **kwargs):
+        if self.is_super_user:
+            self.role = "super_user"
+        elif self.is_admin:
+            self.role = "admin"
+        elif self.is_team_leader:
+            self.role = "team_leader"
+        elif self.is_staff_new:
+            self.role = "staff"
+        elif self.is_freelancer:
+            self.role = "freelancer"
+
+        super().save(*args, **kwargs)
+
     @property
     def is_active(self):
         return self.logout_time is None
@@ -49,11 +76,11 @@ class User(AbstractUser):
             duration = self.logout_time - self.login_time
         else:
             duration = timezone.now() - self.login_time
-
         return int(duration.total_seconds())
 
-    def _str_(self):
+    def __str__(self):
         return f"{self.username} - {self.login_time} to {self.logout_time if self.logout_time else 'Active'}"
+
 
 
 class UserActivityLog(models.Model):
@@ -64,6 +91,36 @@ class UserActivityLog(models.Model):
 
     def _str_(self):
         return f"{self.user.username} - {self.login_time} to {self.logout_time if self.logout_time else 'Active'}"
+
+
+class SuperAdmin(models.Model):
+    user            = models.ForeignKey(User, on_delete=models.CASCADE, related_name='superadmin_user', null=True, blank=True)
+    superadmin_id   = models.CharField(max_length=200, unique=True, default=uuid4)
+
+    name            = models.CharField(max_length=200, null=True, blank=True)
+    mobile          = models.CharField(max_length=200, null=True, blank=True)
+
+    address         = models.CharField(max_length=200, null=True, blank=True)
+    city            = models.CharField(max_length=25, null=True, blank=True)
+    state           = models.CharField(max_length=30, null=True, blank=True)
+    pincode         = models.CharField(max_length=6, null=True, blank=True)
+
+    dob             = models.CharField(max_length=12, null=True, blank=True)
+    pancard         = models.CharField(max_length=15, null=True, blank=True)
+    aadharCard      = models.CharField(max_length=15, null=True, blank=True)
+    degree          = models.CharField(max_length=50, null=True, blank=True)
+
+    account_number  = models.CharField(max_length=20, null=True, blank=True)
+    upi_id          = models.CharField(max_length=30, null=True, blank=True)
+    bank_name       = models.CharField(max_length=50, null=True, blank=True)
+    ifsc_code       = models.CharField(max_length=30, null=True, blank=True)
+    
+    created_date    = models.DateTimeField(auto_now_add=True)
+    updated_date    = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.user.email} (SuperAdmin)"
+
     
 
 class Admin(models.Model):

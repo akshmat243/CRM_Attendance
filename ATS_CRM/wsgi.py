@@ -1,5 +1,5 @@
 """
-WSGI config for Vrindavan project.
+WSGI config for ATS_CRM project.
 
 It exposes the WSGI callable as a module-level variable named ``application``.
 

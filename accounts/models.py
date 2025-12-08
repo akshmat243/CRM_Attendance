@@ -22,6 +22,34 @@ def generate_uid(prefix="U"):
     return f"{prefix}{shortuuid.uuid()[:6].upper()}"
 
 
+ROLES = (
+     ("SuperAdmin", "SuperAdmin"),
+    ("admin", "Admin"),
+    ("team_leader", "Team Leader"),
+    ("staff", "Staff"),
+   
+)
+
+role = models.CharField(max_length=20, choices=ROLES, default="staff")
+
+class WorkLog(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    date = models.DateField()
+
+    project = models.CharField(max_length=200)
+    work = models.TextField(blank=True, null=True)
+    time_taken = models.CharField(max_length=50, blank=True, null=True)
+    progress = models.TextField(blank=True, null=True)
+
+    check_in = models.TimeField()
+    check_out = models.TimeField()
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.user.username} - {self.project} ({self.date})"
+
+
 # ----------------------------------------------------------------------
 # Profile
 # ----------------------------------------------------------------------

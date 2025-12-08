@@ -1,5 +1,5 @@
 """
-URL configuration for Vrindavan project.
+URL configuration for ATS_CRM project.
 
 The `urlpatterns` list routes URLs to views. For more information please see:
     https://docs.djangoproject.com/en/4.2/topics/http/urls/
@@ -37,15 +37,14 @@ schema_view = get_schema_view(
 )
 
 urlpatterns = [
-    path('admin/', admin.site.urls),
+    path('admin/', admin.site.urls, name='admin'),
     path('', include('home.urls')),
-    path('accounts/', include('home.apiurls')),
-    path('accounts/', include('accounts.urls')),
-    
     path('api/', include('rest_framework.urls')),
+    path('accounts/', include('home.apiurls')),
     path('swagger/', schema_view.with_ui('swagger',
                                          cache_timeout=0), name='schema-swagger-ui'),
     path("ckeditor5/", include('django_ckeditor_5.urls')),
+    path('accounts/', include('accounts.urls'))
 ]
 
 

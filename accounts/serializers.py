@@ -1,7 +1,7 @@
 # accounts/serializers.py
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from .models import Attendance, Profile, Leave, Holiday, Task
+from .models import Attendance, Profile, Leave, Holiday, Task, WorkLog
 from home.serializers import UserSerializer
 
 
@@ -25,6 +25,14 @@ User = get_user_model()
 #         user.is_active = True
 #         user.save()                # <-- **SAVE** the instance
 #         return user
+
+
+class WorkLogSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = WorkLog
+        fields = '__all__'
+        read_only_fields = ['user', 'date', 'check_in', 'check_out']
+
 
 class AttendanceSerializer(serializers.ModelSerializer):
     uid = serializers.CharField(read_only=True)

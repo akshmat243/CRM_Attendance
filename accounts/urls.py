@@ -62,12 +62,12 @@ urlpatterns = [
     path('attendance/by-date/', attendance_by_date, name='attendance_by_date'),
     path('attendance/status/by-date/', present_absent_by_date, name='attendance_status_by_date'),
     path('attendance/month/', attendance_month, name='attendance_month_view'),
-    # path('register/', register_user, name='register'),
+ #   path('register/', register_user, name='register'),
     path('delete-user/<str:user_uid>/<str:uid>/',delete_user,name='delete-user-secure'),
 
     # Auth
-    # path('login/', TokenObtainPairView.as_view(), name='login'),
-    # path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+   # path('login/', TokenObtainPairView.as_view(), name='login'),
+   # path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
 
     # ----- REMOVE this line -----
     # path('', include(router.urls)),

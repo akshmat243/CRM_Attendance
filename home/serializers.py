@@ -13,7 +13,7 @@ class UserSerializer(serializers.ModelSerializer):
     token_detail = serializers.SerializerMethodField("get_token_detail")
     class Meta:
         model = User 
-        fields = ('id', 'username', 'name', 'email', 'mobile', 'profile_image', 'is_admin', 'is_team_leader', 'is_staff_new', 'is_freelancer', 'login_time', 'logout_time', 'token_detail',)
+        fields = ('id', 'username', 'name', 'email', 'mobile', 'profile_image','is_super_user', 'is_admin', 'is_team_leader', 'is_staff_new', 'is_freelancer', 'login_time', 'logout_time', 'token_detail',)
         extra_kwargs = {
             'token_detail': {'read_only': True}
         }
@@ -57,10 +57,11 @@ class TeamLeadDataSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 class StaffProfileSerializer(serializers.ModelSerializer):
+    user_id = serializers.IntegerField(source='user.id', read_only=True)
     class Meta:
         model = Staff
         fields = [
-            'user','name', 'email', 'mobile', 'address', 'city', 'pincode', 'state',
+            'id' ,'user_id', 'name', 'email', 'mobile', 'address', 'city', 'pincode', 'state',
             'dob', 'pancard', 'aadharCard', 'marksheet', 'degree', 'account_number',
             'upi_id', 'bank_name', 'ifsc_code', 'salary', 'achived_slab',
             'referral_code', 'join_referral', 'created_date', 'updated_date'

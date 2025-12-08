@@ -156,7 +156,10 @@ CORS_ALLOW_METHODS = [
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://localhost:9002",
+    "http://127.0.0.1:8000",
+    
 ]
+
 
 CORS_ALLOW_CREDENTIALS = True
 
@@ -234,16 +237,14 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = 'en-us'
 
-#TIME_ZONE = 'Asia/Kolkata'
-USE_TZ = True
-
-TIME_ZONE = 'UTC'
+TIME_ZONE = 'Asia/Kolkata'   # ✔ correct IST timezone
+USE_TZ = True                # ✔ keep this True
 
 USE_I18N = True
 
-USE_TZ = True
-
 AUTH_USER_MODEL = 'home.User'
+
+
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/4.2/howto/static-files/

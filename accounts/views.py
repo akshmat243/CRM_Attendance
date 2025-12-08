@@ -1,12 +1,12 @@
 # accounts/views.py
 from django.core.validators import slug_unicode_re
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.response import Response
+from rest_framework.decorators import api_view, permission_classes 
+from rest_framework.permissions import IsAuthenticated , AllowAny
+from rest_framework.response import Response 
 from rest_framework import status, generics, viewsets
 from django.utils import timezone
 from django.shortcuts import render
-from django.contrib.auth import get_user_model
+from django.contrib.auth import alogout, get_user_model
 from django.db.models import Q, Count
 from django.http import HttpResponse
 from calendar import monthrange
@@ -15,7 +15,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font
 import csv
 from .serializers import UserSerializer
-from .models import Attendance, Profile, Leave, Holiday, Task
+from .models import Attendance, Profile, Leave, Holiday, Task, WorkLog
 from .serializers import (
     AttendanceSerializer, AttendanceByDateSerializer,
     ProfileSerializer, LeaveSerializer, HolidaySerializer, TaskSerializer
@@ -29,15 +29,18 @@ User = get_user_model()
 # 1. CHECK-IN & CHECK-OUT (NEW & FIXED)
 # ————————————————————————————————————————
 @api_view(['POST'])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def check_in(request):
     user = request.user
     today = date.today()
 
+    # Get IST time correctly
+    ist_now = timezone.localtime(timezone.now())
+
     attendance, created = Attendance.objects.get_or_create(
         user=user,
         date=today,
-        defaults={'check_in': timezone.now().time(), 'status': 'Present'}
+        defaults={'check_in': ist_now.time(), 'status': 'Present'}
     )
 
     if not created and attendance.check_in:
@@ -46,14 +49,15 @@ def check_in(request):
             status=status.HTTP_409_CONFLICT
         )
 
-    attendance.check_in = timezone.now().time()
+    attendance.check_in = ist_now.time()
     attendance.status = 'Present'
     attendance.save()
 
     return Response({
         "message": "Checked in successfully",
-        "check_in": attendance.check_in.strftime("%H:%M:%S")
+        "check_in": ist_now.strftime("%H:%M:%S")   # Always IST
     })
+
 
 
 @api_view(['POST'])
@@ -67,22 +71,50 @@ def check_out(request):
     except Attendance.DoesNotExist:
         return Response({"error": "Check-in first!"}, status=400)
 
-    if not attendance.check_in:
-        return Response({"error": "Cannot check out without check-in"}, status=400)
-
     if attendance.check_out:
-        return Response(
-            {"error": "Already checked out"},
-            status=status.HTTP_409_CONFLICT
-        )
+        return Response({"error": "Already checked out"}, status=409)
 
-    attendance.check_out = timezone.now().time()
+    # -----------------------------------------------
+    # 1. VALIDATE form inputs
+    # -----------------------------------------------
+    project = request.data.get("project")
+    work = request.data.get("work")
+    time_taken = request.data.get("time_taken")
+    progress = request.data.get("progress")
+
+    if not project:
+        return Response({"error": "Project name required"}, status=400)
+
+    # -----------------------------------------------
+    # 2. Convert to IST
+    # -----------------------------------------------
+    ist_now = timezone.localtime(timezone.now())
+
+    # -----------------------------------------------
+    # 3. Save Attendance checkout time
+    # -----------------------------------------------
+    attendance.check_out = ist_now.time()
     attendance.save()
+
+    # -----------------------------------------------
+    # 4. Create WorkLog entry
+    # -----------------------------------------------
+    WorkLog.objects.create(
+        user=user,
+        date=today,
+        project=project,
+        work=work,
+        time_taken=time_taken,
+        progress=progress,
+        check_in=attendance.check_in,
+        check_out=ist_now.time()
+    )
 
     return Response({
         "message": "Checked out successfully",
-        "check_out": attendance.check_out.strftime("%H:%M:%S")
+        "check_out": ist_now.strftime("%H:%M:%S")
     })
+
 
 
 # ————————————————————————————————————————

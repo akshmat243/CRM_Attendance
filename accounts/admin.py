@@ -1,6 +1,6 @@
 # accounts/admin.py
 from django.contrib import admin
-from .models import User, Profile, Attendance, Leave, Holiday
+from .models import User, Profile, Attendance, Leave, Holiday, WorkLog
 from datetime import date
 from datetime import date as date_class
 
@@ -10,6 +10,8 @@ from django.http import HttpResponse
 from datetime import date
 from calendar import monthrange
 from .models import Attendance, User, Task
+
+admin.site.register(WorkLog)
 
 @admin.register(Profile)
 class ProfileAdmin(admin.ModelAdmin):
