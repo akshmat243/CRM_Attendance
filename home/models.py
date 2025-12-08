@@ -15,6 +15,7 @@ import random
 from django_ckeditor_5.fields import CKEditor5Field
 
 
+
 class User(AbstractUser):
     name            = models.CharField(max_length=200, null=True, blank=True)
     mobile          = models.CharField(max_length=200, unique=True)
@@ -175,6 +176,7 @@ class Team_Leader(models.Model):
     achived_slab    = models.CharField(max_length=30, default=00, null=True, blank=True)
     created_date    = models.DateTimeField(auto_now_add=True)
     updated_date    = models.DateTimeField(auto_now=True)
+    profile_image   = models.ImageField(upload_to='team_leaders/', null=True, blank=True)
 
     def __str__(self):
         return self.email
@@ -416,7 +418,7 @@ class Task(models.Model):
     updated_date    = models.DateTimeField(auto_now=True)
 
 class Attendance(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='home_attendance')
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
     date = models.DateField(auto_now_add=True)
     is_present = models.BooleanField(default=False)
     created_date    = models.DateTimeField(auto_now_add=True)
@@ -535,3 +537,8 @@ class MerchantFormsData(models.Model):
 
     def __str__(self):
         return f"Merchant: {self.legal_name} ({self.marchant_dba_name})"
+
+
+
+
+

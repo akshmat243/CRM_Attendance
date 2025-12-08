@@ -384,10 +384,13 @@ urlpatterns = [
 
 
 
-
+    # --- UNIVERSAL NOTIFICATION API ---
+    path('api/common/notifications/', api.UniversalNotificationAPIView.as_view(), name='api_common_notifications'),
+    
     #AUTO ASSIGN LEADS 
     path("auto-assign-leads/", AutoAssignLeadsAPIView.as_view(), name="auto-assign-leads"),
 
+    path('api/today-interested/', TodayInterestedCountAPIView.as_view(), name='today-interested'),
 
    ]   
 

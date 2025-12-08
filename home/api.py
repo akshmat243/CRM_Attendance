@@ -40,12 +40,11 @@ import pandas as pd
 from rest_framework.parsers import MultiPartParser, FormParser
 from django.utils.timezone import localtime
 from django.core.exceptions import FieldError
-# Is line ko upar import section mein ADD karo
+
 from django.http import Http404
 from rest_framework.authentication import BasicAuthentication
 
 
-#new import
 from django.db.models import Sum, IntegerField
 from django.db.models.functions import Cast
 from django.db.models import Prefetch
@@ -64,6 +63,8 @@ from django.apps import apps
 logger = logging.getLogger(__name__)
 User = apps.get_model('home', 'User')
 
+
+
 class IsLeadOwnerOrAdminOrTeamLeader(BasePermission):
     def has_permission(self, request, view):
         user = request.user
@@ -71,7 +72,7 @@ class IsLeadOwnerOrAdminOrTeamLeader(BasePermission):
         if not user.is_authenticated:
             return False
         
-        # Superuser always allowed
+      
         if user.is_superuser:
             return True
         
@@ -87,8 +88,6 @@ class IsLeadOwnerOrAdminOrTeamLeader(BasePermission):
 
         return False
 
-
-# home/permissions.py
 from rest_framework.permissions import BasePermission
 
 class IsOnlyAdminUser(BasePermission):
@@ -194,8 +193,6 @@ class MarketingAccessPermission(BasePermission):
 
 
 
-# home/api.py (file ke top par add karo)
-
 from rest_framework import permissions
 
 class IsCustomStaffUser(permissions.BasePermission):
@@ -221,7 +218,6 @@ class CustomIsSuperuser(permissions.BasePermission):
         return request.user and request.user.is_authenticated and request.user.is_superuser    
 
 
-# --- Team Leader Permission ---
 class IsCustomTeamLeaderUser(permissions.BasePermission):
     """
     Allows access only to Team Leader users.
@@ -237,7 +233,6 @@ class StandardResultsSetPagination(PageNumberPagination):
 
 
 
-# Yeh pagination class hai
 class ActivityLogPagination(PageNumberPagination):
     page_size = 100
     page_size_query_param = 'page_size'
@@ -261,9 +256,8 @@ class IsManagerOrAdmin(permissions.BasePermission):
 
 
 
-# ===================================================================
-# 1. LOGIN API VIEW [FINAL FIX - MANUAL AUTH]
-# ===================================================================
+# LOGIN API VIEW [MANUAL AUTH]
+
 @method_decorator(csrf_exempt, name='dispatch')
 class LoginApiView(APIView):
     permission_classes = [AllowAny]
@@ -292,29 +286,26 @@ class LoginApiView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # --- YEH HAI FINAL FIX: Hum authenticate ko bypass karenge ---
         try:
-            # Hum seedha email se user ko dhoondhenge
+            
             user = User.objects.get(email=username_or_email)
         except User.DoesNotExist:
-            # Agar email se nahi mila, toh username se dhoondhenge
+            
             try:
                 user = User.objects.get(username=username_or_email)
             except User.DoesNotExist:
-                # Ab pakka user nahi hai
+               
                 return Response(
                     {'status': False, 'message': 'Invalid username or password', 'data': []}, 
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-        # User mil gaya, ab password check karo
         if not user.check_password(password):
             return Response(
                 {'status': False, 'message': 'Invalid username or password', 'data': []}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # Password sahi hai! Ab user active check karo
         if not user.is_superuser:
             if user.user_active is False:
                 return Response(
@@ -327,21 +318,20 @@ class LoginApiView(APIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
         
-        # Sab theek hai, login karo
         user.is_user_login = True
         user.save()
 
-        # Serialize the user data
         serializer = UserSerializer(user, read_only=True, context={'request': request})
         
         return Response(
             {'status': True, 'message': 'Authenticated successfully', 'data': serializer.data}, 
             status=status.HTTP_200_OK
         )
+    
+
         
 class staff_assigned_leads(APIView):
 
-    # authentication_classes = [TokenAuthentication]
     permission_classes = [IsAuthenticated , CustomIsSuperuser]
 
     def get(self, request):
@@ -521,6 +511,8 @@ class StatusUpdateAPIView(APIView):
 
         return Response({"error": "Invalid data provided."}, status=status.HTTP_400_BAD_REQUEST)
     
+
+    
 class AutoAssignLeadsAPIView(APIView):
     permission_classes = [IsAuthenticated ,  CustomIsSuperuser]
 
@@ -556,6 +548,8 @@ class AutoAssignLeadsAPIView(APIView):
 
         return Response({"error": "You already have leads."}, status=status.HTTP_400_BAD_REQUEST)
     
+
+    
 class LeadsReportAPIView(APIView):
     permission_classes = [IsAuthenticated , CustomIsSuperuser]
 
@@ -578,12 +572,14 @@ class LeadsReportAPIView(APIView):
         res['data'] = serializer.data
         return Response(res, status=status.HTTP_200_OK)
     
+
+    
 class LeadHistoryAPIView(APIView):
     permission_classes = [IsAuthenticated, CustomIsSuperuser]
 
     def get(self, request):
         res = {}
-        # Get lead_id from query parameters, not request.data
+        
         lead_id = request.query_params.get('lead_id')
 
         if lead_id is None:
@@ -602,7 +598,7 @@ class LeadHistoryAPIView(APIView):
 
 class AddLeadBySelfAPI(APIView):
     permission_classes = [IsAuthenticated , CustomIsSuperuser]
-    parser_classes = (MultiPartParser, FormParser) # form-data ke liye
+    parser_classes = (MultiPartParser, FormParser) 
 
     def post(self, request):
         user = request.user
@@ -617,7 +613,7 @@ class AddLeadBySelfAPI(APIView):
         if not mobile:
             return Response({"message": "Mobile number is required."}, status=status.HTTP_400_BAD_REQUEST)
         
-        # Mobile number ko string mein convert karo taaki filter sahi chale
+        
         mobile_str = str(mobile)
         if LeadUser.objects.filter(call=mobile_str).exists():
             return Response({"message": "Mobile number already exists."}, status=status.HTTP_400_BAD_REQUEST)
@@ -1899,54 +1895,85 @@ class AdminAddAPIView(APIView):
 
 
 
-
-
-
 # ===================================================================
-# NAYA ADMIN EDIT API (GET / PATCH)
+# ADMIN EDIT API (SMART AUTO-FIX VERSION)
 # ===================================================================
 class AdminEditAPIView(APIView):
     """
-    API ek Admin ki profile ko Get aur Update karne ke liye.
+    API to Get and Update an Admin profile.
+    Special Feature: It auto-fixes incorrectly linked profiles via Email.
     """
-    permission_classes = [IsAuthenticated, CustomIsSuperuser] # Sirf Superuser hi edit kar sakta hai
-    parser_classes = (MultiPartParser, FormParser) # profile_image upload ke liye
+    permission_classes = [IsAuthenticated, CustomIsSuperuser] 
+    parser_classes = (MultiPartParser, FormParser)
 
     def get_object(self, id):
         """
-        Helper method se Admin object get karo
+        This method performs an AUTOMATIC FIX:
+        1. Searches for Admin by User ID (from URL).
+        2. If not found, checks by Email.
+        3. If Email matches, it corrects the Admin's User link.
         """
         try:
-            return Admin.objects.get(id=id)
-        except Admin.DoesNotExist:
-            raise Http404
+            # Step 1: Find the User ID to be edited
+            target_user = User.objects.get(id=id)
+
+            # Step 2: Check if the Admin Profile is correctly linked to this User
+            try:
+                return Admin.objects.get(user=target_user)
+            
+            except Admin.DoesNotExist:
+                # --- 🛠️ MAGIC FIX START ---
+                # If User ID doesn't match, search by EMAIL.
+                # (Because the email in Admin profile is usually correct, only the user link might be wrong)
+                try:
+                    # Find the Admin with the same email
+                    broken_admin = Admin.objects.get(email=target_user.email)
+
+                    # If found, fix the connection
+                    # (It was previously wrongly linked to Superuser, now it will link to the correct ID)
+                    broken_admin.user = target_user
+                    broken_admin.save()
+
+                    print(f" AUTO-FIXED: Admin '{broken_admin.name}' link is now corrected to User ID {target_user.id}!")
+                    return broken_admin
+
+                except Admin.DoesNotExist:
+                    # If not found by Email either, then the profile truly doesn't exist
+                    raise Http404("Admin profile does not exist for this User.")
+                # --- 🛠️ MAGIC FIX END ---
+
+        except User.DoesNotExist:
+            raise Http404("Invalid User ID (User does not exist).")
 
     def get(self, request, id, *args, **kwargs):
         """
-        Ek Admin ki poori details fetch karo.
+        Fetch full details of an Admin.
         """
         admin = self.get_object(id)
-        # Data dikhane ke liye DashboardAdminSerializer (jo pehle banaya tha) use karo
+        
+        # Use DashboardAdminSerializer to display data
         serializer = DashboardAdminSerializer(admin)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def patch(self, request, id, *args, **kwargs):
         """
-        Ek Admin ki profile ko update karo (partial update).
+        Update an Admin profile.
         """
         admin = self.get_object(id)
-        # Data update karne ke liye naya 'AdminUpdateSerializer' use karo
+        
+        # Use AdminUpdateSerializer for update
         serializer = AdminUpdateSerializer(admin, data=request.data, partial=True)
         
         if serializer.is_valid():
             updated_admin = serializer.save()
-            # Updated data dikhane ke liye read serializer ka use karo
+            
+            # Use read serializer to show updated data in response
             read_serializer = DashboardAdminSerializer(updated_admin)
             return Response(read_serializer.data, status=status.HTTP_200_OK)
         
-        # Agar error aaye
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
+
+
 
 
 
@@ -2266,7 +2293,6 @@ class StaffAddAPIView(APIView):
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         
-        # Agar valid hai, tab save karo
         try:
             staff_instance = serializer.save()
         except Exception as e:
@@ -2325,19 +2351,13 @@ class TeamLeaderSuperAdminAddAPIView(APIView):
     
 
 
-# home/api.py
-
-# ===================================================================
 # NAYA TEAM LEADER EDIT API (GET / PATCH) [PERMISSION FIX]
-# ===================================================================
+
 class TeamLeaderEditAPIView(APIView):
     """
-    API ek Team Leader ki profile ko Get aur Update karne ke liye (teamedit function).
-    [FIX]: Ab yeh SIRF SUPERUSER ko allow karega.
+    this api is used for edit the team leader by superuser.
     """
     
-    # --- [YEH RAHA PERMISSION FIX] ---
-    # IsCustomAdminUser ko CustomIsSuperuser se badal diya
     permission_classes = [IsAuthenticated, CustomIsSuperuser] 
     
     parser_classes = (MultiPartParser, FormParser) # profile_image upload ke liye
@@ -2347,7 +2367,7 @@ class TeamLeaderEditAPIView(APIView):
         Helper method se Team_Leader object get karo
         """
         try:
-            return Team_Leader.objects.get(id=id)
+            return Team_Leader.objects.get(user__id=id)
         except Team_Leader.DoesNotExist:
             raise Http404
 
@@ -2374,25 +2394,23 @@ class TeamLeaderEditAPIView(APIView):
             read_serializer = ProductivityTeamLeaderSerializer(updated_teamleader, context={'request': request})
             return Response(read_serializer.data, status=status.HTTP_200_OK)
         
-        # Agar error aaye
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
     def post(self, request, id, *args, **kwargs):
-        # POST ko bhi PATCH ki tarah handle karo
+        
         return self.patch(request, id, format)
 
 
 
 
-# ===================================================================
-# NAYA STAFF EDIT API (GET / PATCH)
-# ===================================================================
+# STAFF EDIT API (GET / PATCH)
+
 class StaffEditAPIView(APIView):
     """
     API ek Staff/Freelancer ki profile ko Get aur Update karne ke liye.
     """
-    permission_classes = [CustomIsSuperuser] # Sirf Admin/TL/Superuser hi edit kar sakta hai
-    parser_classes = (MultiPartParser, FormParser) # profile_image upload ke liye
+    permission_classes = [ IsAuthenticated , CustomIsSuperuser] 
+    parser_classes = (MultiPartParser, FormParser) 
 
     def get_object(self, id):
         """
@@ -2408,7 +2426,7 @@ class StaffEditAPIView(APIView):
         Ek Staff/Freelancer ki poori details fetch karo.
         """
         staff = self.get_object(id)
-        # Data dikhane ke liye FullStaffSerializer use karo (jo humne pichhle fix mein banaya tha)
+        
         serializer = FullStaffSerializer(staff, context={'request': request})
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -2417,16 +2435,15 @@ class StaffEditAPIView(APIView):
         Ek Staff/Freelancer ki profile ko update karo (PATCH).
         """
         staff = self.get_object(id)
-        # Data update karne ke liye StaffUpdateSerializer use karo
+        
         serializer = StaffUpdateSerializer(staff, data=request.data, partial=True)
         
         if serializer.is_valid():
             updated_staff = serializer.save()
-            # Updated data dikhane ke liye read serializer ka use karo
+           
             read_serializer = StaffProfileSerializer(updated_staff, context={'request': request})
             return Response(read_serializer.data, status=status.HTTP_200_OK)
         
-        # Agar error aaye
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
 
@@ -3317,64 +3334,71 @@ class StandardResultsSetPagination(PageNumberPagination):
     page_size_query_param = 'page_size'
     max_page_size = 1000
 
+    
 class VisitLeadsAPIView(APIView):
-    permission_classes = [IsAuthenticated, CustomIsSuperuser]  # Add your custom permission class if needed
+    """
+    GET /accounts/api/leads/visit/?tag=<tag>&search=<q>
+    - If tag is provided it MUST be one of allowed_tags, otherwise returns 400.
+    - If no tag provided, returns full list (or filtered by search).
+    """
+    permission_classes = [IsAuthenticated]   # change if you want stricter access
     pagination_class = StandardResultsSetPagination
 
-    def get(self, request, tag, format=None):
+    # allowed tags (lowercase). include common typo if you want
+    ALLOWED_TAGS = {"pending_follow", "today_follow", "tomorrow_follow"}
+
+    def get(self, request, format=None):
+        # get and normalize tag/search
+        tag = (request.query_params.get("tag") or "").strip().lower()
+        search_query = (request.query_params.get("search") or "").strip()
+
+        # If tag provided, validate it
+        if tag:
+            if tag not in self.ALLOWED_TAGS:
+                return Response({
+                    "error": "Invalid tag provided.",
+                    "provided_tag": tag,
+                    "allowed_tags": sorted(list(self.ALLOWED_TAGS))
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # normalize synonyms (map tommorrow typo to canonical)
+            if tag in ("tommorrow_follow", "tomorrow_follow"):
+                tag = "tomorrow_follow"
 
         today = timezone.now().date()
         tomorrow = today + timedelta(days=1)
-        user_email = request.user.email
-        team_leader = Team_Leader.objects.filter(email=user_email).last()
 
-        search_query = request.query_params.get('search', '')
+        # status constant (adjust if DB uses different spelling)
+        STATUS_INTERESTED = "Intrested"
 
-        # Base queryset depending on role and tag
+        # Base queryset
+        queryset = LeadUser.objects.filter(status=STATUS_INTERESTED)
+
+        # Search handling (search should be allowed even without tag)
         if search_query:
-            interested_leads = LeadUser.objects.filter(
+            queryset = queryset.filter(
                 Q(name__icontains=search_query) |
                 Q(call__icontains=search_query) |
-                Q(team_leader__name__icontains=search_query),
-                status='Intrested'
-            )
-        elif request.user.is_superuser:
-            if tag == 'pending_follow':
-                interested_leads = LeadUser.objects.filter(status='Intrested', follow_up_date__isnull=False).order_by('-updated_date')
-            elif tag == 'today_follow':
-                interested_leads = LeadUser.objects.filter(status='Intrested', follow_up_date=today).order_by('-updated_date')
-            elif tag == 'tommorrow_follow':
-                interested_leads = LeadUser.objects.filter(status='Intrested', follow_up_date=tomorrow).order_by('-updated_date')
-            else:
-                interested_leads = LeadUser.objects.filter(status='Intrested').order_by('-updated_date')
-        elif request.user.is_team_leader:
-            if not team_leader:
-                return Response({"error": "Team Leader profile not found."}, status=404)
-            if tag == 'pending_follow':
-                interested_leads = LeadUser.objects.filter(status='Intrested', follow_up_date__isnull=False, team_leader=team_leader).order_by('-updated_date')
-            elif tag == 'today_follow':
-                interested_leads = LeadUser.objects.filter(status='Intrested', follow_up_date=today, team_leader=team_leader).order_by('-updated_date')
-            elif tag == 'tommorrow_follow':
-                interested_leads = LeadUser.objects.filter(status='Intrested', follow_up_date=tomorrow, team_leader=team_leader).order_by('-updated_date')
-            else:
-                interested_leads = LeadUser.objects.filter(follow_up_time__isnull=True, team_leader=team_leader, status='Intrested').order_by('-updated_date')
+                Q(team_leader__name__icontains=search_query)
+            ).order_by("-updated_date")
         else:
-            if not team_leader:
-                interested_leads = Team_LeadData.objects.none()
+            # tag-based filtering only when tag provided
+            if tag == "pending_follow":
+                queryset = queryset.filter(follow_up_date__isnull=False).order_by("-updated_date")
+            elif tag == "today_follow":
+                queryset = queryset.filter(follow_up_date=today).order_by("-updated_date")
+            elif tag == "tomorrow_follow":
+                queryset = queryset.filter(follow_up_date=tomorrow).order_by("-updated_date")
             else:
-                interested_leads = Team_LeadData.objects.filter(team_leader=team_leader, status='Intrested')
+                # no tag -> return all (ordered)
+                queryset = queryset.order_by("-updated_date")
 
-        # Pagination setup
+        # Pagination + serialize
         paginator = self.pagination_class()
-        page = paginator.paginate_queryset(interested_leads, request, view=self)
+        page = paginator.paginate_queryset(queryset, request, view=self)
+        serializer = ApiLeadUserSerializer(page, many=True)
 
-        # Select suitable serializer per queryset
-        if request.user.is_superuser or request.user.is_team_leader:
-            serializer = ApiLeadUserSerializer(page, many=True)
-        else:
-            serializer = ApiTeamLeadDataSerializer(page, many=True)
-
-        return paginator.get_paginated_response(serializer.data)    
+        return paginator.get_paginated_response(serializer.data)
 
 # ==========================================================
 # API: PROJECT (LIST & CREATE)
@@ -3835,6 +3859,7 @@ class AdminStaffDashboardAPIView(APIView):
 
             staff_list_data.append({
                 'id': staff.id,
+                'user_id': staff.user.id,
                 'name': staff.name,
                 'team_leader_name': staff.team_leader.name if staff.team_leader else "N/A",
                 'mobile': staff.mobile,
@@ -6111,18 +6136,16 @@ class TeamLeaderAddStaffAPIView(APIView):
         if serializer.is_valid():
             staff = serializer.save()
             
-            # --- Activity Log (Aapke view ke hisaab se) ---
             x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
             ip = x_forwarded_for.split(',')[0] if x_forwarded_for else request.META.get('REMOTE_ADDR')
             
             tagline = f"staff : {staff.name} created by user[Email : {request.user.email}, Team leader User]"
             tag2 = f"staff : {staff.name} created"
 
-            # Team Leader ka Admin dhoondo log ke liye
             team_leader = Team_Leader.objects.get(user=request.user)
             
             ActivityLog.objects.create(
-                admin=team_leader.admin, # Log TL ke admin ke paas jaayega
+                admin=team_leader.admin, 
                 description=tagline,
                 ip_address=ip,
                 email=request.user.email,
@@ -6130,20 +6153,15 @@ class TeamLeaderAddStaffAPIView(APIView):
                 activity_type=tag2,
                 name=request.user.name,
             )
-            # ----------------------------------------------
+            
 
             return Response({"message": "Staff Created Successfully", "id": staff.id}, status=status.HTTP_201_CREATED)
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
 
-# home/api.py
-
 class TeamLeaderStaffEditAPIView(APIView):
-    """
-    API for Team Leader to Edit their Staff/Freelancer.
-    [FIX]: Used StaffOnlyProfileSerializer to remove unnecessary nested data.
-    """
+   
     
     permission_classes = [IsAuthenticated, IsCustomTeamLeaderUser]
     parser_classes = [MultiPartParser, FormParser]
@@ -6169,8 +6187,6 @@ class TeamLeaderStaffEditAPIView(APIView):
         if error_response:
             return error_response
         
-        # --- [CHANGE HERE] ---
-        # FullStaffSerializer ki jagah StaffOnlyProfileSerializer use kiya
         serializer = StaffOnlyProfileSerializer(staff)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -6184,8 +6200,6 @@ class TeamLeaderStaffEditAPIView(APIView):
         if serializer.is_valid():
             updated_staff = serializer.save()
             
-            # --- [CHANGE HERE] ---
-            # Response me bhi clean data bhejo
             response_serializer = StaffOnlyProfileSerializer(updated_staff)
             return Response(response_serializer.data, status=status.HTTP_200_OK)
         
@@ -6197,22 +6211,17 @@ class TeamLeaderStaffEditAPIView(APIView):
 # API: TEAM LEADER - VIEW STAFF CALENDAR
 # ==========================================================
 class TeamLeaderStaffCalendarAPIView(APIView):
-    """
-    API endpoint for Team Leader to view a Staff's productivity calendar.
-    GET: Fetches calendar for a specific staff_id.
-    ONLY TEAM LEADER (is_team_leader=True) can access this.
-    """
+   
     
     permission_classes = [IsAuthenticated, IsCustomTeamLeaderUser]
 
     def get(self, request, staff_id, format=None):
-        # 1. Get Team Leader Profile
+        
         try:
             team_leader_instance = Team_Leader.objects.get(user=request.user)
         except Team_Leader.DoesNotExist:
             return Response({"error": "Team Leader profile not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        # 2. Get Staff and Check Permission (Is staff under this TL?)
         try:
             staff = Staff.objects.get(id=staff_id)
             if staff.team_leader != team_leader_instance:
@@ -6220,7 +6229,6 @@ class TeamLeaderStaffCalendarAPIView(APIView):
         except Staff.DoesNotExist:
             return Response({"error": "Staff not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        # 3. Get Month/Year Filters
         current_date = datetime.now()
         try:
             year = int(request.query_params.get('year', current_date.year))
@@ -6231,7 +6239,6 @@ class TeamLeaderStaffCalendarAPIView(APIView):
             
         months_list = [(i, calendar.month_name[i]) for i in range(1, 13)]
 
-        # 4. Calculate Daily Salary Base
         days_in_month = monthrange(year, month)[1]
         salary_arg = staff.salary
         
@@ -6245,7 +6252,6 @@ class TeamLeaderStaffCalendarAPIView(APIView):
             
         daily_salary = round(salary_float / days_in_month) if days_in_month > 0 else 0
 
-        # 5. Get Leads Data
         leads_data = LeadUser.objects.filter(
             assigned_to=staff,
             updated_date__year=year,
@@ -6253,7 +6259,6 @@ class TeamLeaderStaffCalendarAPIView(APIView):
             status='Intrested'
         ).values('updated_date__day').annotate(count=Count('id'))
 
-        # 6. Calculate Productivity
         leads_map = {item['updated_date__day']: item['count'] for item in leads_data}
         total_earned_salary = 0
         weekdays = list(calendar.day_name)
@@ -6278,7 +6283,6 @@ class TeamLeaderStaffCalendarAPIView(APIView):
                 'salary': daily_earn
             })
 
-        # 7. Final Response
         response_data = {
             "staff_details": StaffProfileSerializer(staff).data,
             "year": year,
@@ -6306,7 +6310,6 @@ class AutoAssignLeadsAPIView(APIView):
 
         team_leader = request_user.team_leader
 
-        # Count leads already assigned
         current_total_assign_leads = LeadUser.objects.filter(
             assigned_to=request_user, 
             status='Leads'
@@ -6315,7 +6318,6 @@ class AutoAssignLeadsAPIView(APIView):
         if current_total_assign_leads != 0:
             return Response({"error": "You already have leads."}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Leads available for assignment
         team_leader_total_leads = Team_LeadData.objects.filter(
             assigned_to=None,
             status='Leads'
@@ -6327,7 +6329,6 @@ class AutoAssignLeadsAPIView(APIView):
             if leads_count >= 100:
                 break
 
-            # Skip duplicates
             if LeadUser.objects.filter(call=lead.call).exists():
                 continue
 
@@ -6356,44 +6357,34 @@ class AutoAssignLeadsAPIView(APIView):
 # API: TEAM LEADER - VIEW STAFF INCENTIVE
 # ==========================================================
 class TeamLeaderStaffIncentiveAPIView(APIView):
-    """
-    API endpoint for 'incentive_slap_staff' (Team Leader Dashboard).
-    GET: Allows Team Leader to view incentives of a specific staff member.
-    ONLY TEAM LEADER (is_team_leader=True) can access this.
-    """
     
     permission_classes = [IsAuthenticated, IsCustomTeamLeaderUser]
 
     def get(self, request, staff_id, format=None):
-        # 1. Get Team Leader Profile
+        
         try:
             tl_instance = Team_Leader.objects.get(user=request.user)
         except Team_Leader.DoesNotExist:
             return Response({"error": "Team Leader profile not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        # 2. Get Staff and Check Permission
+        
         try:
             staff = Staff.objects.get(id=staff_id)
-            # Check: Kya ye staff is Team Leader ke under hai?
+            
             if staff.team_leader != tl_instance:
                 return Response({"error": "You do not have permission to view this staff's incentives."}, status=status.HTTP_403_FORBIDDEN)
         except Staff.DoesNotExist:
             return Response({"error": "Staff not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        # 3. Get Filters (Month/Year)
         months_list = [(i, calendar.month_name[i]) for i in range(1, 13)]
         year = int(request.query_params.get('year', datetime.now().year))
         month = int(request.query_params.get('month', datetime.now().month))
 
-        # 4. Get User Type (Freelancer or Not)
         user_type = staff.user.is_freelancer
 
-        # 5. Get Slab Data & Adjust Amount logic
         slab_qs = Slab.objects.all()
         slab_data = SlabSerializer(slab_qs, many=True).data
         
-        # Logic: Agar user Staff hai (Freelancer nahi), to Amount me se 100 minus karo
-        # (Bilkul waisa jaise humne Staff API me kiya tha)
         if not user_type:
             for slab_item in slab_data:
                 try:
@@ -6402,7 +6393,6 @@ class TeamLeaderStaffIncentiveAPIView(APIView):
                 except (ValueError, TypeError):
                     pass
 
-        # 6. Get Sell Data (Earning History)
         sell_property_qs = Sell_plot.objects.filter(
             staff=staff, 
             updated_date__year=year,
@@ -6412,7 +6402,6 @@ class TeamLeaderStaffIncentiveAPIView(APIView):
         total_earn_amount = sell_property_qs.aggregate(total_earn=Sum('earn_amount'))
         total_earn = total_earn_amount.get('total_earn') or 0
 
-        # 7. Final Response
         response_data = {
             'slab': slab_data,
             'sell_property': SellPlotSerializer(sell_property_qs, many=True).data,
@@ -6420,7 +6409,7 @@ class TeamLeaderStaffIncentiveAPIView(APIView):
             'year': year,
             'month': month,
             'months_list': months_list,
-            'user_type': user_type, # True if Freelancer, False if Staff
+            'user_type': user_type, 
             'staff_name': staff.name
         }
         
@@ -6434,16 +6423,12 @@ class TeamLeaderStaffIncentiveAPIView(APIView):
 # API: TEAM LEADER - VIEW STAFF LEADS (LIST)
 # ==========================================================
 class TeamLeaderStaffLeadsListAPIView(APIView):
-    """
-    API endpoint for 'teamleader_perticular_leads'.
-    GET: Fetches list of leads for a specific staff, filtered by status (tag).
-    ONLY TEAM LEADER can access this.
-    """
+   
     permission_classes = [IsAuthenticated, IsCustomTeamLeaderUser]
     pagination_class = StandardResultsSetPagination
 
     def get(self, request, staff_id, tag, format=None):
-        # 1. Verify Team Leader & Staff Relationship
+       
         try:
             tl_instance = Team_Leader.objects.get(user=request.user)
             staff = Staff.objects.get(id=staff_id)
@@ -6452,7 +6437,6 @@ class TeamLeaderStaffLeadsListAPIView(APIView):
         except (Team_Leader.DoesNotExist, Staff.DoesNotExist):
             return Response({"error": "Invalid Team Leader or Staff."}, status=status.HTTP_404_NOT_FOUND)
 
-        # 2. Filter Leads based on Tag
         base_qs = LeadUser.objects.filter(assigned_to=staff)
         
         if tag == "Intrested":
@@ -6466,11 +6450,10 @@ class TeamLeaderStaffLeadsListAPIView(APIView):
         elif tag == "Visit":
             leads = base_qs.filter(status='Visit')
         else:
-            leads = base_qs # All leads if tag doesn't match
+            leads = base_qs 
 
         leads = leads.order_by('-updated_date')
 
-        # 3. Paginate & Serialize
         paginator = self.pagination_class()
         page = paginator.paginate_queryset(leads, request, view=self)
         if page is not None:
@@ -6479,7 +6462,7 @@ class TeamLeaderStaffLeadsListAPIView(APIView):
 
         serializer = ApiLeadUserSerializer(leads, many=True)
         return Response(serializer.data)
-# home/api.py
+
 
 
 class TeamLeaderExportLeadsAPIView(APIView):
@@ -6495,7 +6478,6 @@ class TeamLeaderExportLeadsAPIView(APIView):
 
             tl_instance = Team_Leader.objects.get(user=request.user)
 
-            # FILTER: ALL Interested Leads
             if all_interested == "1":
                 base_qs = LeadUser.objects.filter(team_leader=tl_instance, status="Intrested")
                 staff_name = "All_Staff"
@@ -6507,7 +6489,6 @@ class TeamLeaderExportLeadsAPIView(APIView):
                 base_qs = LeadUser.objects.filter(assigned_to=staff, status=status_val)
                 staff_name = staff.name
 
-            # DATE RANGE
             tz = get_current_timezone()
             start_date = make_aware(datetime.strptime(start_date_str, "%Y-%m-%d"), tz)
             end_date = make_aware(
@@ -6520,7 +6501,6 @@ class TeamLeaderExportLeadsAPIView(APIView):
             if not leads.exists():
                 return Response({"message": "No data found for export."}, status=404)
 
-            # PREPARE DATA
             data = [{
                 'Name': l.name,
                 'Call': l.call,
@@ -6554,14 +6534,9 @@ class TeamLeaderExportLeadsAPIView(APIView):
 
 
 
-# home/api.py
 
 class TeamLeadLeadsReportAPIView(APIView):
-    """
-    API endpoint for 'all_leads_data' function (Team Leader Dashboard).
-    GET: Fetches combined leads list AND Dashboard Card Counts.
-    [UPDATE]: Removed pending/today/tomorrow followup tags.
-    """
+  
     permission_classes = [IsAuthenticated, IsCustomTeamLeaderUser]
     pagination_class = StandardResultsSetPagination
 
@@ -6571,10 +6546,8 @@ class TeamLeadLeadsReportAPIView(APIView):
         except Team_Leader.DoesNotExist:
             return Response({"error": "Team Leader profile not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        # 1. Get Staff Members
         staff_members = Staff.objects.filter(team_leader=team_lead)
 
-        # --- CALCULATE DASHBOARD COUNTS (For Top Cards) ---
         total_staff = staff_members.count()
         associate_staff = staff_members.filter(user__is_freelancer=True).count()
         
@@ -6600,9 +6573,7 @@ class TeamLeadLeadsReportAPIView(APIView):
             'associate_staff': associate_staff,
             'total_upload_leads': total_upload_leads
         }
-        # ----------------------------------------
-
-        # 2. Map Tags to DB Statuses
+  
         status_map = {
             'total_leads_tag': 'Leads',
             'total_interested_tag': 'Intrested',
@@ -6613,13 +6584,9 @@ class TeamLeadLeadsReportAPIView(APIView):
             'total_visit_tag': 'Visit'
         }
         
-        # 3. Initialize Querysets
         staff_leads_qs = LeadUser.objects.none()
         tl_leads_qs = Team_LeadData.objects.none()
 
-        # 4. Filtering Logic (Followups hata diye hain)
-        
-        # A. Upload Leads Tag (Ye sirf Team_LeadData table me hote hain)
         if tag == 'total_upload_lead_tag':
             tl_leads_qs = Team_LeadData.objects.filter(
                 assigned_to=None,
@@ -6627,15 +6594,15 @@ class TeamLeadLeadsReportAPIView(APIView):
                 status='Leads' 
             )
 
-        # B. Status Tags (Interested, Lost, etc.)
+
         elif tag in status_map:
             status_val = status_map[tag]
-            # 1. Staff Leads
+          
             staff_leads_qs = LeadUser.objects.filter(
                 assigned_to__in=staff_members, 
                 status=status_val
             )
-            # 2. Team Leader Leads
+            
             tl_leads_qs = Team_LeadData.objects.filter(
                 assigned_to=None, 
                 team_leader=team_lead, 
@@ -6643,27 +6610,24 @@ class TeamLeadLeadsReportAPIView(APIView):
             )
             
         else:
-            # Agar tag match nahi hua
+           
             valid_tags = ['total_upload_lead_tag'] + list(status_map.keys())
             return Response({
                 "error": f"Invalid tag: '{tag}'",
                 "valid_tags_are": valid_tags
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        # 5. Sort & Serialize
         staff_leads_qs = staff_leads_qs.order_by('-updated_date')
         tl_leads_qs = tl_leads_qs.order_by('-created_date')
 
         staff_data = ApiLeadUserSerializer(staff_leads_qs, many=True).data
         tl_data = ApiTeamLeadDataSerializer(tl_leads_qs, many=True).data
 
-        # 6. Combine
         for item in staff_data: item['source'] = 'Staff Lead'
         for item in tl_data: item['source'] = 'Team Lead Data'
 
         combined_data = staff_data + tl_data
 
-        # 7. Pagination
         page = int(request.query_params.get('page', 1))
         page_size = 10
         start = (page - 1) * page_size
@@ -6674,7 +6638,6 @@ class TeamLeadLeadsReportAPIView(APIView):
         has_next = end < total_count
         has_previous = start > 0
 
-        # 8. Final Response
         return Response({
             'counts': counts_data,
             'count': total_count,
@@ -6685,27 +6648,21 @@ class TeamLeadLeadsReportAPIView(APIView):
         }, status=status.HTTP_200_OK)
     
 
-# home/api.py
 
 class TeamLeaderStaffProductivityReportAPIView(APIView):
-    """
-    API endpoint for 'staff_productivity_view' (Team Leader Dashboard).
-    GET: Fetches productivity stats for all staff under this Team Leader.
-    """
+  
     permission_classes = [IsAuthenticated, IsCustomTeamLeaderUser]
 
     def get(self, request, format=None):
-        # 1. Get Team Leader Profile
+        
         try:
             team_leader_instance = Team_Leader.objects.get(user=request.user)
         except Team_Leader.DoesNotExist:
             return Response({"error": "Team Leader profile not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        # 2. Get Date Filters
         date_filter = request.query_params.get('date')
-        end_date_str = request.query_params.get('endDate') # Matching your view params
+        end_date_str = request.query_params.get('endDate') 
         
-        # Default Dates (Today)
         today = timezone.now().date()
         start_date = timezone.make_aware(datetime.combine(today, datetime.min.time()))
         end_date = timezone.make_aware(datetime.combine(today, datetime.max.time()))
@@ -6713,26 +6670,22 @@ class TeamLeaderStaffProductivityReportAPIView(APIView):
         if date_filter and end_date_str:
             try:
                 s_date = datetime.strptime(date_filter, '%Y-%m-%d')
-                # Handle end date string check
+               
                 if isinstance(end_date_str, str):
                     e_date = datetime.strptime(end_date_str, '%Y-%m-%d')
                 else:
                     e_date = end_date_str
                 
-                # Set logic as per your view (Add 1 day then subtract 1 second for end of day)
                 start_date = timezone.make_aware(datetime.combine(s_date, datetime.min.time()))
                 end_date = timezone.make_aware(e_date + timedelta(days=1)) - timedelta(seconds=1)
                 
             except ValueError:
-                pass # Use defaults if error
+                pass 
 
-        # 3. Define Filters
-        # Status ke liye Updated Date
         update_filter = {'updated_date__range': [start_date, end_date]}
-        # Total Leads ke liye Created Date
+        
         create_filter = {'created_date__range': [start_date, end_date]}
 
-        # 4. Get Staff Members
         staffs = Staff.objects.filter(
             team_leader=team_leader_instance, 
             user__user_active=True, 
@@ -6741,7 +6694,6 @@ class TeamLeaderStaffProductivityReportAPIView(APIView):
         
         staff_data = []
         
-        # Aggregates initialization
         total_all_leads = 0
         total_all_interested = 0
         total_all_not_interested = 0
@@ -6751,9 +6703,8 @@ class TeamLeaderStaffProductivityReportAPIView(APIView):
         total_all_visit = 0
         total_all_calls = 0
 
-        # 5. Loop and Calculate
         for staff in staffs:
-            # Query 1: Activity Stats (Updated Date)
+           
             leads_activity = LeadUser.objects.filter(assigned_to=staff, **update_filter).aggregate(
                 interested=Count('id', filter=Q(status='Intrested')),
                 not_interested=Count('id', filter=Q(status='Not Interested')),
@@ -6763,12 +6714,10 @@ class TeamLeaderStaffProductivityReportAPIView(APIView):
                 visit=Count('id', filter=Q(status='Visit'))
             )
             
-            # Query 2: Total Leads (Created Date)
             leads_created = LeadUser.objects.filter(assigned_to=staff, **create_filter).aggregate(
                 total_leads=Count('id')
             )
 
-            # Extract values
             total = leads_created['total_leads']
             interested = leads_activity['interested']
             not_interested = leads_activity['not_interested']
@@ -6779,11 +6728,9 @@ class TeamLeaderStaffProductivityReportAPIView(APIView):
             
             total_calls = interested + not_interested + other_location + not_picked + lost + visit
 
-            # Calculate Percentages
             visit_percentage = (visit / total * 100) if total > 0 else 0
             interested_percentage = (interested / total * 100) if total > 0 else 0
 
-            # Append to List
             staff_data.append({
                 'id': staff.id,
                 'name': staff.name,
@@ -6799,7 +6746,6 @@ class TeamLeaderStaffProductivityReportAPIView(APIView):
                 'total_calls': total_calls,
             })
 
-            # Accumulate Grand Totals
             total_all_leads += total
             total_all_interested += interested
             total_all_not_interested += not_interested
@@ -6809,15 +6755,14 @@ class TeamLeaderStaffProductivityReportAPIView(APIView):
             total_all_visit += visit
             total_all_calls += total_calls
 
-        # 6. Grand Total Percentages
+        
         total_visit_percentage = (total_all_visit / total_all_leads * 100) if total_all_leads > 0 else 0
         total_interested_percentage = (total_all_interested / total_all_leads * 100) if total_all_leads > 0 else 0
 
-        # 7. Final Response
+        
         response_data = {
-            'staff_data': staff_data, # Table List
+            'staff_data': staff_data, 
             
-            # Top Cards Data
             'total_all_leads': total_all_leads,
             'total_all_interested': total_all_interested,
             'total_all_not_interested': total_all_not_interested,
@@ -6837,25 +6782,12 @@ class TeamLeaderStaffProductivityReportAPIView(APIView):
 
 
 
-
-# home/api.py
-
-# home/api.py
-
 class TeamLeaderFreelancerProductivityAPIView(APIView):
-    """
-    Freelancer productivity API for Team Leader dashboard.
-    Query params:
-      - date=YYYY-MM-DD         (single date)
-      - endDate=YYYY-MM-DD      (optional end date for range)
-      - teamleader_id=INT       (optional filter)
-      - admin_id=INT            (optional)
-    Only accessible to users with is_team_leader == True.
-    """
-    permission_classes = []  # using explicit check below; add IsAuthenticated if needed
+ 
+    permission_classes = []  
 
     def get(self, request, *args, **kwargs):
-        # Permission check: only team leader allowed
+        
         if not getattr(request.user, "is_team_leader", False):
             return Response({"detail": "Permission denied. Only Team Leader can access."},
                             status=status.HTTP_403_FORBIDDEN)
@@ -6865,7 +6797,7 @@ class TeamLeaderFreelancerProductivityAPIView(APIView):
         teamleader_id = request.GET.get('teamleader_id', None)
         admin_id = request.GET.get('admin_id', None)
 
-        # Try to fetch team leader profile for the current user
+       
         try:
             team_leader_instance = Team_Leader.objects.filter(user=request.user).last()
         except Exception:
@@ -6874,10 +6806,10 @@ class TeamLeaderFreelancerProductivityAPIView(APIView):
         if not team_leader_instance:
             return Response({"detail": "Team leader profile not found."}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Base queryset: freelancers (user__is_freelancer=True) under this team leader
+        
         staffs = Staff.objects.filter(team_leader=team_leader_instance, user__user_active=True, user__is_freelancer=True)
 
-        # optional filters (if provided)
+       
         if admin_id:
             try:
                 admins_int = int(admin_id)
@@ -6899,9 +6831,9 @@ class TeamLeaderFreelancerProductivityAPIView(APIView):
         total_calls = 0
 
         for staff in staffs:
-            # date range
+            
             if date_filter and end_date:
-                # parse dates
+               
                 try:
                     start_dt = datetime.strptime(date_filter, '%Y-%m-%d')
                     start_dt = timezone.make_aware(start_dt)
@@ -6931,7 +6863,7 @@ class TeamLeaderFreelancerProductivityAPIView(APIView):
                 leads_by_date1 = LeadUser.objects.filter(assigned_to=staff, **lead_filter1).aggregate(total_leads=Count('id'))
 
             elif date_filter:
-                # single day
+               
                 try:
                     _ = datetime.strptime(date_filter, '%Y-%m-%d')
                 except Exception:
@@ -6962,7 +6894,7 @@ class TeamLeaderFreelancerProductivityAPIView(APIView):
                 )
                 leads_by_date1 = {'total_leads': leads_by_date.get('total_leads', 0)}
 
-            # safe ints
+           
             total_leads = int(leads_by_date1.get('total_leads') or 0)
             interested = int(leads_by_date.get('interested') or 0)
             not_interested = int(leads_by_date.get('not_interested') or 0)
@@ -6990,7 +6922,7 @@ class TeamLeaderFreelancerProductivityAPIView(APIView):
                 'total_calls': total_calls_for_staff,
             })
 
-            # update totals
+            
             total_all_leads += total_leads
             total_all_interested += interested
             total_all_not_interested += not_interested
@@ -7030,31 +6962,29 @@ class LeadsDashboardAPIView(APIView):
     def get(self, request, format=None):
         user = request.user
 
-        # team_leader instance
+       
         try:
             team_leader = Team_Leader.objects.get(user=user)
         except Team_Leader.DoesNotExist:
             return Response({"detail": "Team leader profile not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        # base queryset: show leads belonging to this team_leader
+        
         qs = LeadUser.objects.filter(team_leader=team_leader).order_by('-id')
 
-        # Optional: keep server-side pagination for performance but DO NOT return pagination keys
-        # (we still limit to first 10 so response size isn't huge; if you want ALL items, set page_size=None)
+       
         page_size = 10
         paginator = Paginator(qs, page_size)
         page_obj = paginator.get_page(1)  # always return first page to frontend (or change logic as needed)
 
-        # serialize leads on this page
+       
         serializer = LeadForDashboardSerializer(page_obj.object_list, many=True, context={'request': request})
         serialized = serializer.data
 
-        # Build items exactly for UI (no filters/pagination meta)
         items = []
-        # serial numbers start at 1 for the returned list
+        
         for idx, lead_data in enumerate(serialized, start=1):
             phone = lead_data.get('mobile') or lead_data.get('phone') or ""
-            whatsapp_flag = bool(phone)  # adjust if you have explicit field
+            whatsapp_flag = bool(phone)  
             items.append({
                 'sn': idx,
                 'id': lead_data.get('id'),
@@ -7066,11 +6996,10 @@ class LeadsDashboardAPIView(APIView):
                 #'possible_statuses': ["Leads", "Intrested", "Not Interested", "Other Location", "Not Picked", "Lost", "Customer", "Maybe"],
             })
 
-        # staff list to populate Team dropdown in UI
         staff_qs = Staff.objects.filter(team_leader=team_leader)
         staff_list = [{'id': s.id, 'name': s.name} for s in staff_qs]
 
-        # aggregates shown on page top
+       
         aggregates = {
             'total_upload_leads': LeadUser.objects.filter(team_leader=team_leader, assigned_to__isnull=True).count(),
             'total_leads': LeadUser.objects.filter(team_leader=team_leader, status="Leads").count(),
@@ -7078,7 +7007,6 @@ class LeadsDashboardAPIView(APIView):
             'total_lost_leads': LeadUser.objects.filter(team_leader=team_leader, status="Lost").count(),
         }
 
-        # Final response: only required fields (no filters, no pagination)
         response = {
             'staff_name': items,
             'staff_list': staff_list,
@@ -7096,35 +7024,24 @@ class AddLeadAPI(APIView):
     permission_classes = [IsAuthenticated, IsCustomTeamLeaderUser]
 
     def post(self, request, format=None):
-        """
-        POST /api/leads/add/
-        Body (application/json or form-data):
-          - name (required)
-          - email (optional)
-          - mobile (optional)  -> saved to model field `call`
-          - status (optional)
-          - message (description) (optional)
-        Only accessible to team_leader users. The created LeadUser.team_leader is set
-        from the requesting user's Team_Leader profile.
-        """
+       
         serializer = LeadCreateSerializer(data=request.data)
         if not serializer.is_valid():
             return Response({'errors': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
 
-        # get team_leader instance for request.user
+        
         try:
             team_lead = Team_Leader.objects.get(user=request.user)
         except Team_Leader.DoesNotExist:
-            # fallback: maybe Team_Leader is stored by email
+            
             team_lead = Team_Leader.objects.filter(email=request.user.username).first()
             if not team_lead:
                 return Response({'detail': 'Team leader profile not found.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Create lead using serializer but we need to set team_leader and assigned_to accordingly
+       
         validated = serializer.validated_data
         mobile = validated.pop('mobile', '') or ''
-        # if team leader is creating for self (as in original view), assigned_to left null
-        # if you want team_leader to assign to a staff automatically, implement logic here
+       
         lead = LeadUser.objects.create(
             user = request.user,
             team_leader = team_lead,
@@ -7135,7 +7052,7 @@ class AddLeadAPI(APIView):
             status = validated.get('status', '')
         )
 
-        # return minimal created response
+       
         return Response({
             'id': lead.id,
             'name': lead.name,
@@ -7151,39 +7068,38 @@ class TeamCustomerAPIView(APIView):
     permission_classes = [IsAuthenticated, IsCustomTeamLeaderUser]
 
     def get(self, request, tag=None, format=None):
-        """
-        Now requires a tag. Valid tags: pending_follow, today_follow, tommorrow_follow
-        Supports both query-param (?tag=...) and path-param (/api/teamcustomer/<tag>/)
-        """
-        VALID_TAGS = ['pending_follow', 'today_follow', 'tommorrow_follow']
+      
+        VALID_TAGS = ['pending_follow', 'today_follow', 'tommorrow_follow','interested']
 
-        # prefer query param, fallback to path param
+       
         tag_q = request.query_params.get('tag')
         if tag_q:
             tag = tag_q.strip()
 
-        # if tag missing -> error
+        
         if not tag:
             return Response({
                 "detail": "Tag is required. Valid tags: " + ", ".join(VALID_TAGS),
                 "valid_tags": VALID_TAGS
             }, status=400)
 
-        # if tag invalid -> error
+        
         if tag not in VALID_TAGS:
             return Response({
                 "detail": f"Invalid tag '{tag}'. Valid tags: " + ", ".join(VALID_TAGS),
                 "valid_tags": VALID_TAGS
             }, status=400)
+        
+        
 
-        # tag is present and valid — continue normal processing
+        
         user = request.user
         today = timezone.now().date()
         tomorrow = today + timedelta(days=1)
 
         search_query = request.query_params.get('search', '').strip()
 
-        # find team_leader instance
+        
         try:
             team_leader = Team_Leader.objects.filter(user=user).last() or Team_Leader.objects.filter(email=user.email).last()
         except Exception:
@@ -7191,26 +7107,26 @@ class TeamCustomerAPIView(APIView):
 
         qs = LeadUser.objects.none()
 
-        # If search was provided, still restrict to team_leader scope (matching your original)
+       
         if search_query:
             qs = LeadUser.objects.filter(
                 Q(name__icontains=search_query) | Q(call__icontains=search_query) | Q(team_leader__name__icontains=search_query),
                 status='Intrested'
             ).order_by('-updated_date')
         else:
-            # handle allowed tag values
+            
             if tag == 'pending_follow':
                 qs = LeadUser.objects.filter(status='Intrested', follow_up_date__isnull=False).order_by('-updated_date')
             elif tag == 'today_follow':
                 qs = LeadUser.objects.filter(status='Intrested', follow_up_date=today).order_by('-updated_date')
             elif tag == 'tommorrow_follow':
                 qs = LeadUser.objects.filter(status='Intrested', follow_up_date=tomorrow).order_by('-updated_date')
+            elif tag == 'interested':
+                qs = LeadUser.objects.filter(status='Intrested').order_by('-updated_date')
 
-        # Always restrict to this team_leader's leads to match original behavior
         if team_leader:
             qs = qs.filter(team_leader=team_leader)
 
-        # Pagination (50 per page)
         page_size = 50
         paginator = Paginator(qs, page_size)
         page_number = request.query_params.get('page', 1)
@@ -7251,27 +7167,21 @@ class TeamCustomerAPIView(APIView):
 # API: TEAM LEADER-ONLY - UPDATE LEAD STATUS
 # ==========================================================
 class TeamLeaderUpdateLeadAPIView(APIView):
-    """
-    API endpoint for Team Leader to update a lead's status.
-    PATCH: Updates status, message, follow-up date/time.
-    ONLY TEAM LEADER (is_team_leader=True) can access this.
-    """
+   
     
     permission_classes = [IsAuthenticated, IsCustomTeamLeaderUser]
 
     def patch(self, request, id, format=None):
-        # 1. Get Team Leader Profile
+        
         try:
             tl_instance = Team_Leader.objects.get(user=request.user)
         except Team_Leader.DoesNotExist:
             return Response({"error": "Team Leader profile not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        # 2. Get Lead & Verify Permission
+       
         try:
             lead_user = LeadUser.objects.get(id=id)
             
-            # Check: Kya ye lead is Team Leader ke Staff ki hai?
-            # OR Kya ye lead direct Team Leader ko assigned hai?
             is_authorized = False
             
             if lead_user.assigned_to and lead_user.assigned_to.team_leader == tl_instance:
@@ -7287,7 +7197,7 @@ class TeamLeaderUpdateLeadAPIView(APIView):
 
         current_status = lead_user.status
 
-        # 3. Validate & Update Data
+        
         serializer = LeadUpdateSerializer(instance=lead_user, data=request.data, partial=True)
         
         if serializer.is_valid():
@@ -7296,23 +7206,23 @@ class TeamLeaderUpdateLeadAPIView(APIView):
             follow_date = serializer.validated_data.get('followDate')
             follow_time = serializer.validated_data.get('followTime')
 
-            # --- Special Case: Not Picked ---
+           
             if status_val == "Not Picked":
                 try:
                     Team_LeadData.objects.create(
                         user=lead_user.user,
                         name=lead_user.name,
                         call=lead_user.call,
-                        status="Leads", # Reset status
+                        status="Leads", 
                         email=lead_user.email,
-                        team_leader=tl_instance # Wapas TL ke pool me
+                        team_leader=tl_instance 
                     )
-                    lead_user.delete() # Staff se hata do
+                    lead_user.delete() 
                     return Response({'message': 'Lead moved back to Team Leader pool (Not Picked)'}, status=status.HTTP_200_OK)
                 except Exception as e:
                     return Response({'error': f'Failed to move lead: {e}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-            # --- Normal Update ---
+           
             lead_user.status = status_val
             lead_user.message = message
             
@@ -7323,7 +7233,7 @@ class TeamLeaderUpdateLeadAPIView(APIView):
             
             lead_user.save()
 
-            # 4. Create History Log
+            
             try:
                 Leads_history.objects.create(
                     leads=lead_user,
@@ -7333,9 +7243,9 @@ class TeamLeaderUpdateLeadAPIView(APIView):
                     message=message
                 )
             except Exception:
-                pass # Ignore history error
+                pass 
 
-            # 5. Create Activity Log
+            
             try:
                 ip = get_client_ip(request)
                 user_type = get_user_type(request.user)
@@ -7358,7 +7268,7 @@ class TeamLeaderUpdateLeadAPIView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
     def post(self, request, id, format=None):
-        # Allow POST as well
+       
         return self.patch(request, id, format)
     
 
@@ -7367,31 +7277,26 @@ class TeamLeaderUpdateLeadAPIView(APIView):
 
 
 class TeamLeaderLeadHistoryAPIView(APIView):
-    """
-    API endpoint for 'LeadHistory' function (Team Leader Dashboard).
-    GET: Fetches history of a specific lead.
-    ONLY TEAM LEADER can access this.
-    """
+   
     permission_classes = [IsAuthenticated, IsCustomTeamLeaderUser]
     pagination_class = StandardResultsSetPagination
 
     def get(self, request, id, format=None):
-        # 1. Verify Team Leader
+       
         try:
             tl_instance = Team_Leader.objects.get(user=request.user)
         except Team_Leader.DoesNotExist:
             return Response({"error": "Team Leader profile not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        # 2. Verify Lead Access
-        # Check karo ki ye lead is TL ke kisi staff ki hai, ya TL ki khud ki hai
+       
         try:
             lead = LeadUser.objects.get(id=id)
             is_authorized = False
             
-            # Case A: Lead is assigned to a staff under this TL
+           
             if lead.assigned_to and lead.assigned_to.team_leader == tl_instance:
                 is_authorized = True
-            # Case B: Lead is directly under this TL (rare but possible)
+            
             elif lead.team_leader == tl_instance:
                 is_authorized = True
                 
@@ -7399,14 +7304,13 @@ class TeamLeaderLeadHistoryAPIView(APIView):
                 return Response({"error": "Permission denied. This lead does not belong to your team."}, status=status.HTTP_403_FORBIDDEN)
 
         except LeadUser.DoesNotExist:
-            # Agar lead LeadUser me nahi hai, toh shayad wo Team_LeadData (uploaded) me ho?
-            # History usually LeadUser ki hi hoti hai. Agar nahi mili to 404.
+           
             return Response({"error": "Lead not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        # 3. Get History
+      
         history_qs = Leads_history.objects.filter(lead_id=id).order_by('-updated_date')
 
-        # 4. Paginate & Serialize
+    
         paginator = self.pagination_class()
         page = paginator.paginate_queryset(history_qs, request, view=self)
         
@@ -7422,26 +7326,17 @@ class TeamLeaderLeadHistoryAPIView(APIView):
 
 
 class ActivityLogsRoleAPIView(APIView):
-    """
-    GET /api/activitylogs/  -> returns activity logs based on request.user's role:
-      - superuser: all logs
-      - admin: logs with admin profile
-      - team_leader: logs with team_leader profile
-      - staff_new: logs for that user or staff profile
-    Query params:
-      - page (optional, default 1)
-      - page_size (optional, default 100)
-    """
+   
     permission_classes = [IsAuthenticated , IsCustomTeamLeaderUser]
 
     def get(self, request, format=None):
         user = request.user
 
-        # Determine role and base queryset (follow original view logic)
+        
         if getattr(user, 'is_superuser', False):
             qs = ActivityLog.objects.all().order_by('-created_date')
         elif getattr(user, 'is_admin', False):
-            # find Admin profile by email (original view used Admin.objects.filter(email=user_email).last())
+           
             admin_profile = Admin.objects.filter(email=user.email).last()
             if not admin_profile:
                 return Response({"detail": "Admin profile not found for this user."}, status=status.HTTP_404_NOT_FOUND)
@@ -7453,17 +7348,17 @@ class ActivityLogsRoleAPIView(APIView):
             qs = ActivityLog.objects.filter(team_leader=team_leader_profile).order_by('-created_date')
         elif getattr(user, 'is_staff_new', False):
             staff_profile = Staff.objects.filter(email=user.email).last()
-            # original: ActivityLog.objects.filter(Q(user=request.user) | Q(staff=staff_instance))
+            
             if staff_profile:
                 qs = ActivityLog.objects.filter(Q(user=user) | Q(staff=staff_profile)).order_by('-created_date')
             else:
-                # fallback: at least show logs where user=request.user
+               
                 qs = ActivityLog.objects.filter(user=user).order_by('-created_date')
         else:
-            # default: nothing / forbidden
+            
             return Response({"detail": "You do not have permission to view activity logs."}, status=status.HTTP_403_FORBIDDEN)
 
-        # Optional: support simple search by 'q' (like original had none) -- not required, but useful
+        
         q = request.query_params.get('q', '').strip()
         if q:
             qs = qs.filter(
@@ -7473,7 +7368,7 @@ class ActivityLogsRoleAPIView(APIView):
                 Q(activity_type__icontains=q)
             )
 
-        # Pagination
+       
         try:
             page_size = int(request.query_params.get('page_size', 100))
             if page_size <= 0:
@@ -7491,7 +7386,7 @@ class ActivityLogsRoleAPIView(APIView):
         total_pages = paginator.num_pages
         current_page = page_obj.number
 
-        # build page_range similar to your view (numbers only; no '...' strings)
+        
         if total_pages <= 7:
             page_range = list(range(1, total_pages + 1))
         else:
@@ -7509,7 +7404,7 @@ class ActivityLogsRoleAPIView(APIView):
             'total_items': paginator.count,
             'total_pages': total_pages,
             'page_range': page_range,
-            # local dev reference image (will be transformed by dev pipeline)
+            
             'reference_image': '/mnt/data/c2dc665d-9d54-40ab-a57d-08f450e93be3.png'
         }
         return Response(response, status=status.HTTP_200_OK)
@@ -7517,19 +7412,9 @@ class ActivityLogsRoleAPIView(APIView):
 
 
 
-
-
-
-
-
 class VisitTeamLeaderAPIView(APIView):
     """
-    GET /api/visits/?page=1
-
-    - superuser: LeadUser.objects.filter(status='Visit')
-    - team_leader: LeadUser.objects.filter(team_leader=that_tl, status='Visit')
-    - others: Team_LeadData.objects.filter(team_leader=that_tl, status='Visit')
-
+    
     Response:
     {
       "items": [...],
@@ -7619,15 +7504,8 @@ class VisitTeamLeaderAPIView(APIView):
     
 
 
-
-
-# home/api.py
-
 class TeamLeaderExportDashboardLeadsAPIView(APIView):
-    """
-    API to export leads for 4 specific pages: Interested, Pending, Today, Tomorrow.
-    POST: Generates Excel file based on 'tag' and optional date range.
-    """
+  
     permission_classes = [IsAuthenticated, IsCustomTeamLeaderUser]
 
     def post(self, request, format=None):
@@ -7880,11 +7758,6 @@ class TeamLeaderProfileViewAPIView(APIView):
 # API: ADMIN - STAFF LEADS LIST (BY STATUS TAG)
 # ==========================================================
 class AdminnStaffLeadsAPIView(APIView):
-    """
-    API endpoint for 'super_user_side_staff_leads' (Admin Side).
-    GET: Fetches list of leads for an Admin based on status tags.
-    ONLY ADMIN (is_admin=True) can access this.
-    """
     
     permission_classes = [IsAuthenticated, IsCustomAdminUser]
     pagination_class = StandardResultsSetPagination
@@ -7903,7 +7776,7 @@ class AdminnStaffLeadsAPIView(APIView):
         team_leaders = Team_Leader.objects.filter(admin=admin_instance)
 
         # 3. Base Queryset: Filter leads belonging to these Team Leaders
-        # (LeadUser model me 'team_leader' field hota hai)
+        
         base_qs = LeadUser.objects.filter(team_leader__in=team_leaders).order_by('-updated_date')
 
         # 4. Apply Tag Filters (Based on your function)
@@ -7944,12 +7817,7 @@ class AdminnStaffLeadsAPIView(APIView):
 # API: ADMIN - VIEW/UPDATE PROFILE
 # ==========================================================
 class AdminProfileViewAPIView(APIView):
-    """
-    API endpoint for 'admin_view_profile' (Admin Dashboard).
-    GET: Fetches logged-in Admin's profile.
-    PATCH: Updates logged-in Admin's profile.
-    ONLY ADMIN (is_admin=True) can access this.
-    """
+   
     permission_classes = [IsAuthenticated, IsCustomAdminUser]
     parser_classes = [MultiPartParser, FormParser]
 
@@ -7991,10 +7859,6 @@ class AdminProfileViewAPIView(APIView):
 
 
 
-
-
-# home/api.py# home/api.py
-
 def user_has_field(field_name):
     """Return True if User model has a DB field named `field_name` (not a property)."""
     try:
@@ -8002,69 +7866,67 @@ def user_has_field(field_name):
         return True
     except Exception:
         return False
-# home/api.py
+    
 
 class AdminToggleStatusAPIView(APIView):
-    """
-    API for Admin to toggle Active/Inactive status of their Staff or Team Leaders.
-    POST: Toggles the 'user_active' field.
-    ONLY ADMIN can access this for their own team.
-    """
     permission_classes = [IsAuthenticated, IsCustomAdminUser]
 
-    def post(self, request, user_id, format=None):
-        # 1. Get Target User
+    def post(self, request, user_id):
+        # 1) Ensure request.user is authenticated
+        if not request.user or not request.user.is_authenticated:
+            return Response({"error": "Authentication required. Provide valid token/session."}, status=401)
+
+        # 2) Try multiple possible field names for Admin relation (robust)
+        admin_obj = None
+        possible_fields = ["user", "self_user", "admin_user"]  # adjust if your model uses different name
+        for field in possible_fields:
+            lookup = {f"{field}": request.user}
+            try:
+                admin_obj = Admin.objects.get(**lookup)
+                break
+            except Admin.DoesNotExist:
+                continue
+
+        if not admin_obj:
+            # More helpful debugging info to return (safe): show request.user.pk and a hint
+            return Response({
+                "error": "Admin profile not found for the authenticated user.",
+                "hint": "Check Admin model relation field (user/self_user/admin_user) and that the logged-in user is an admin.",
+                "request_user_id": getattr(request.user, "id", None),
+                "request_user_username": getattr(request.user, "username", None)
+            }, status=404)
+
+        # 3) Get target user
         try:
             target_user = User.objects.get(id=user_id)
         except User.DoesNotExist:
-            return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"error": "Target user not found."}, status=404)
 
-        # 2. Get Logged-in Admin Profile
-        try:
-            current_admin = Admin.objects.get(self_user=request.user)
-        except Admin.DoesNotExist:
-            return Response({"error": "Admin profile not found."}, status=status.HTTP_404_NOT_FOUND)
-
-        # 3. Security Check: Is the user under this Admin?
-        is_authorized = False
-
-        # A. Agar Target Team Leader hai
-        if target_user.is_team_leader:
-            # Check karo kya ye TL is Admin ka hai?
-            if Team_Leader.objects.filter(user=target_user, admin=current_admin).exists():
-                is_authorized = True
-
-        # B. Agar Target Staff hai
-        elif target_user.is_staff_new:
-            # Check karo kya ye Staff is Admin ke kisi TL ke under hai?
-            if Staff.objects.filter(user=target_user, team_leader__admin=current_admin).exists():
-                is_authorized = True
+        # 4) Authorization: is target under this admin?
+        is_authorized = Team_Leader.objects.filter(user=target_user, admin=admin_obj).exists() \
+                        or Staff.objects.filter(user=target_user, team_leader__admin=admin_obj).exists()
 
         if not is_authorized:
-            return Response({"error": "Permission denied. This user is not under your administration."}, status=status.HTTP_403_FORBIDDEN)
+            return Response({"error": "Permission denied. This user is not under your administration."}, status=403)
 
-        # 4. Perform Toggle
+        # 5) Toggle and save
         target_user.user_active = not target_user.user_active
         target_user.save()
 
-        status_msg = "Active" if target_user.user_active else "Inactive"
-        
         return Response({
-            "message": f"User is now {status_msg}",
+            "message": f"User is now {'Active' if target_user.user_active else 'Inactive'}",
             "user_id": target_user.id,
             "user_active": target_user.user_active
-        }, status=status.HTTP_200_OK)
+        }, status=200)
+
+
 
 
 # ==========================================================
 # API: ADMIN-ONLY - ACTIVITY LOGS (TIME SHEET)
 # ==========================================================
 class AdminActivityLogAPIView(APIView):
-    """
-    API endpoint for 'activitylogs' function (Admin Dashboard).
-    GET: Fetches activity logs relevant to the logged-in Admin.
-    ONLY ADMIN (is_admin=True) can access this.
-    """
+   
     
     permission_classes = [IsAuthenticated, IsCustomAdminUser]
     pagination_class = ActivityLogPagination # Using your custom pagination
@@ -8110,11 +7972,7 @@ class AdminActivityLogAPIView(APIView):
 # API: FREELANCER PRODUCTIVITY REPORT (ALL ROLES)
 # ==========================================================
 class FreelancerProductivityReportAPIView(APIView):
-    """
-    API endpoint for 'freelancer_productivity_view'.
-    GET: Fetches productivity stats for Freelancers (Associates).
-    Supports Superuser, Admin, and Team Leader roles.
-    """
+   
     permission_classes = [IsAuthenticated , IsCustomAdminUser ]
 
     def get(self, request, format=None):
@@ -8275,10 +8133,7 @@ class FreelancerProductivityReportAPIView(APIView):
 # API: ADMIN-ONLY - STAFF PRODUCTIVITY REPORT (CARDS + LIST)
 # ==========================================================
 class AdminProductivityReportAPIView(APIView):
-    """
-    API endpoint for Admin Dashboard -> Staff Users Page.
-    GET: Fetches productivity stats, earnings, and list for all staff under this Admin.
-    """
+   
     permission_classes = [IsAuthenticated, IsCustomAdminUser]
 
     def get(self, request, format=None):
@@ -8426,11 +8281,7 @@ class AdminProductivityReportAPIView(APIView):
 # API: TEAM LEADER PRODUCTIVITY REPORT (FOR ADMIN/SUPERUSER)
 # ==========================================================
 class TeamLeaderProductivityViewAPIView(APIView):
-    """
-    API endpoint for 'teamleader_productivity_view'.
-    GET: Fetches productivity stats for Team Leaders (Aggregated from their Staff).
-    Accessible by: Superuser, Admin.
-    """
+   
     permission_classes = [IsAuthenticated]
 
     def get(self, request, format=None):
@@ -8449,9 +8300,7 @@ class TeamLeaderProductivityViewAPIView(APIView):
         
         elif request.user.is_admin:
             try:
-                # Get logged-in Admin
-                # Assuming 'self_user' link or direct email match
-                # View logic: Team_Leader.objects.filter(admin__self_user=request.user ...)
+                
                 team_leaders = Team_Leader.objects.filter(
                     admin__self_user=request.user, 
                     user__user_active=True
@@ -8525,8 +8374,6 @@ class TeamLeaderProductivityViewAPIView(APIView):
                 tl_lost += staff_leads.filter(status="Lost", **activity_filter).count()
                 tl_visit += staff_leads.filter(status="Visit", **activity_filter).count()
 
-            # Also include TL's own direct leads if any (not in your view logic, but good to have?)
-            # Your view logic ONLY iterates staff_members, so we stick to that.
             
             tl_total_calls = tl_interested + tl_not_interested + tl_other_location + tl_not_picked + tl_lost + tl_visit
 
@@ -8592,11 +8439,7 @@ class TeamLeaderProductivityViewAPIView(APIView):
 # API: ADMIN-ONLY - TOTAL LEADS (SELF/DIRECT)
 # ==========================================================
 class AdminTotalLeadsAPIView(APIView):
-    """
-    API endpoint for 'total_leads_admin' function.
-    GET: Fetches leads with status='Leads' created directly by the Admin (user=request.user).
-    ONLY ADMIN (is_admin=True) can access this.
-    """
+ 
     
     permission_classes = [IsAuthenticated, IsCustomAdminUser]
     pagination_class = StandardResultsSetPagination
@@ -8604,8 +8447,7 @@ class AdminTotalLeadsAPIView(APIView):
     def get(self, request, format=None):
         paginator = self.pagination_class()
         
-        # Logic from your view: LeadUser.objects.filter(status="Leads", user=request.user)
-        # Yeh wo leads hain jo Admin ne khud banaye hain ya uske naam par hain
+        
         leads_qs = LeadUser.objects.filter(
             status="Leads", 
             user=request.user
@@ -8625,11 +8467,7 @@ class AdminTotalLeadsAPIView(APIView):
 
 
 class AddSellFreelancerV2APIView(APIView):
-    """
-    POST-only API for Team Leader to create Sell_plot for staff/freelancer.
-    URL pattern: /accounts/api/v2/add_sell_freelancer/<int:id>/   (id = staff id or 0)
-    Permission: only team-leader users (IsTeamLeaderOnly)
-    """
+   
     permission_classes = [IsAuthenticated, IsCustomTeamLeaderUser ]
 
     def post(self, request, id, format=None):
@@ -8684,10 +8522,7 @@ class AddSellFreelancerV2APIView(APIView):
 
 
 class AddLeadBySelfAPIView(APIView):
-    """
-    POST-only endpoint to create a lead from the logged-in user (staff / team leader / admin / superuser).
-    Body expects: name, email, mobile, status, description
-    """
+    
     permission_classes = [IsAuthenticated , IsCustomAdminUser]
 
     def post(self, request, *args, **kwargs):
@@ -8743,11 +8578,7 @@ class AddLeadBySelfAPIView(APIView):
 # API: ADMIN-ONLY - LEAD HISTORY
 # ==========================================================
 class AdminLeadHistoryAPIView(APIView):
-    """
-    API endpoint for 'LeadHistory' function (Admin Dashboard).
-    GET: Fetches history of a specific lead.
-    ONLY ADMIN (is_admin=True) can access this for their teams.
-    """
+  
     permission_classes = [IsAuthenticated, IsCustomAdminUser]
     pagination_class = StandardResultsSetPagination
 
@@ -8759,7 +8590,7 @@ class AdminLeadHistoryAPIView(APIView):
             return Response({"error": "Admin profile not found."}, status=status.HTTP_404_NOT_FOUND)
 
         # 2. Verify Lead Access
-        # Check karo ki lead is Admin ke kisi Team Leader (aur uske Staff) ki hai ya nahi
+        
         try:
             lead = LeadUser.objects.get(id=id)
             is_authorized = False
@@ -8800,11 +8631,7 @@ class AdminLeadHistoryAPIView(APIView):
 
 
 class AdminLostLeadsAPIView(APIView):
-    """
-    GET /accounts/api/lost-leads/?tag=<tagname>&page=<n>
-    Only accessible by admin users (is_admin=True or superuser).
-    Returns list of leads filtered like your lost_leads function.
-    """
+    
     permission_classes = [IsAuthenticated, IsCustomAdminUser  ]
 
     def get(self, request, format=None):
@@ -8848,13 +8675,10 @@ class AdminLostLeadsAPIView(APIView):
         return paginator.get_paginated_response({"leads": serializer.data})
     
 
-# home/api.py
-# home/api.py
+
+
 class ChangeLeadStatusAPIView(APIView):
-    """
-    POST /accounts/change-lead-status/<lead_id>/
-    Only users with is_admin=True and is_superuser=False can access.
-    """
+   
     permission_classes = [IsAuthenticated, IsOnlyAdminUser]
 
     def post(self, request, lead_id=None):
@@ -8916,10 +8740,7 @@ class ChangeLeadStatusAPIView(APIView):
 
 
 class AdminNotInterestedLeadsAPIView(APIView):
-    """
-    GET: Return list of leads with status 'Not Interested' for the admin owned team leaders.
-    Only accessible by users with is_admin = True.
-    """
+   
     permission_classes = [IsAuthenticated, IsCustomAdminUser ]
 
     def get(self, request, format=None):
@@ -8940,13 +8761,8 @@ class AdminNotInterestedLeadsAPIView(APIView):
 
 
 
-
-
 class MaybeLeadsAPIView(APIView):
-    """
-    Returns leads with status 'Other Location' for the admin of the logged-in user.
-    Accessible ONLY by admin users.
-    """
+    
     permission_classes = [IsAuthenticated , IsCustomAdminUser ]
 
     def get(self, request, *args, **kwargs):
@@ -8973,13 +8789,6 @@ class MaybeLeadsAPIView(APIView):
         serializer = ApiLeadUserSerializer(leads_qs, many=True, context={'request': request})
         return Response({"leads": serializer.data}, status=status.HTTP_200_OK)
     
-
-
-
-
-
-
-
 
 
 
@@ -9019,28 +8828,8 @@ class LostAdminAPIView(APIView):
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# home/api.py
-# home/api.py
-
 class AdminExportStaffLeadsAPIView(APIView):
-    """
-    API endpoint for Admin to export Staff Leads (Excel).
-    [DEBUG MODE]: Prints/Returns exact reason for Permission Denied.
-    """
+  
     permission_classes = [IsAuthenticated, IsCustomAdminUser]
 
     def post(self, request, format=None):
@@ -9051,7 +8840,7 @@ class AdminExportStaffLeadsAPIView(APIView):
         all_interested = request.data.get('all_interested')
 
         try:
-            # 1. Logged-in Admin nikalo
+          
             admin_profile = Admin.objects.get(self_user=request.user)
             
             if str(all_interested) == "1":
@@ -9064,21 +8853,20 @@ class AdminExportStaffLeadsAPIView(APIView):
                      
                 staff = Staff.objects.get(id=staff_id)
                 
-                # --- [DEBUGGING LOGIC START] ---
-                # Check 1: Staff ke paas Team Leader hai?
+              
                 if not staff.team_leader:
                     return Response({
                         "error": "Permission denied.",
                         "reason": f"Staff '{staff.name}' (ID: {staff.id}) has NO Team Leader assigned."
                     }, status=status.HTTP_403_FORBIDDEN)
 
-                # Check 2: Kya wo TL is Admin ka hai?
+                
                 if staff.team_leader.admin != admin_profile:
                     return Response({
                         "error": "Permission denied.",
                         "reason": f"Staff '{staff.name}' belongs to Admin '{staff.team_leader.admin.name}', but you are '{admin_profile.name}'."
                     }, status=status.HTTP_403_FORBIDDEN)
-                # --- [DEBUGGING LOGIC END] ---
+               
                 
                 base_qs = LeadUser.objects.filter(assigned_to=staff, status=status_val)
                 staff_name = staff.name
@@ -9086,7 +8874,7 @@ class AdminExportStaffLeadsAPIView(APIView):
         except (Admin.DoesNotExist, Staff.DoesNotExist) as e:
             return Response({"error": f"Invalid Data or Profile not found. Detail: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # ... (Date Filter aur Excel generation ka code same rahega) ...
+        
         try:
             s_date = datetime.strptime(start_date_str, '%Y-%m-%d')
             e_date = datetime.strptime(end_date_str, '%Y-%m-%d')
@@ -9116,3 +8904,107 @@ class AdminExportStaffLeadsAPIView(APIView):
         with pd.ExcelWriter(response, engine='xlsxwriter') as writer:
             df.to_excel(writer, index=False, sheet_name='Leads')
         return response
+
+
+
+
+class UniversalNotificationAPIView(APIView):
+   
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, format=None):
+        user = request.user
+        notifications = ActivityLog.objects.none() # Default empty
+
+        # 1. SUPERUSER 
+        if user.is_superuser:
+            notifications = ActivityLog.objects.all().order_by('-created_date')[:50]
+
+        # 2. ADMIN 
+        elif user.is_admin:
+            try:
+                
+                admin_profile = Admin.objects.get(self_user=user)
+                
+                notifications = ActivityLog.objects.filter(admin=admin_profile).order_by('-created_date')[:50]
+            except Admin.DoesNotExist:
+                pass
+
+        # 3. TEAM LEADER 
+        elif user.is_team_leader:
+            try:
+                
+                tl_profile = Team_Leader.objects.get(user=user)
+               
+                notifications = ActivityLog.objects.filter(team_leader=tl_profile).order_by('-created_date')[:50]
+            except Team_Leader.DoesNotExist:
+                pass
+
+        # 4. STAFF 
+        elif user.is_staff_new:
+            
+            notifications = ActivityLog.objects.filter(email=user.email).order_by('-created_date')[:50]
+
+        # --- Response ---
+        if notifications.exists():
+            serializer = NotificationSerializer(notifications, many=True)
+            return Response({
+                "count": notifications.count(),
+                "notifications": serializer.data
+            }, status=status.HTTP_200_OK)
+        else:
+            return Response({
+                "count": 0,
+                "message": "No new notifications.",
+                "notifications": []
+            }, status=status.HTTP_200_OK)
+    
+    
+class TodayInterestedCountAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        today = localtime(now()).date()
+
+        interested_leads = LeadUser.objects.none()  # default empty queryset
+
+        # SUPERUSER
+        if request.user.is_superuser:
+            interested_leads = LeadUser.objects.filter(
+                status='Intrested',
+                follow_up_date=today
+            )
+
+        # TEAM LEADER
+        elif getattr(request.user, "is_team_leader", False):
+            interested_leads = LeadUser.objects.filter(
+                team_leader__user=request.user,
+                status='Intrested',
+                follow_up_date=today
+            )
+
+        # ADMIN
+        elif getattr(request.user, "is_admin", False):
+            interested_leads = LeadUser.objects.filter(
+                team_leader__admin__self_user=request.user,
+                status='Intrested',
+                follow_up_date=today
+            )
+
+        # STAFF
+        elif getattr(request.user, "is_staff_new", False):
+            interested_leads = LeadUser.objects.filter(
+                assigned_to__user=request.user,
+                status='Intrested',
+                follow_up_date=today
+            )
+
+        # Prepare payload
+        leads_data = list(interested_leads.values('name', 'follow_up_time'))
+
+        data = {
+            "count": interested_leads.count(),
+            "leads": leads_data
+        }
+
+        return Response(data)
