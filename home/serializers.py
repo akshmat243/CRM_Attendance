@@ -565,7 +565,8 @@ class TeamLeaderCreateSerializer(serializers.ModelSerializer):
             new_user = User.objects.create_user(
                 username=email, email=email, password=password,
                 profile_image=profile_image, name=name, mobile=mobile, 
-                # is_team_leader=True, on_boarding_manager=on_boarding_manager,
+                is_team_leader=True,
+                # on_boarding_manager=on_boarding_manager,
                 # dsr_manager=dsr_manager, executive_manager=executive_manager, 
                 # delivery_manager=delivery_manager
             )
