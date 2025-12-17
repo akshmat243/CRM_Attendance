@@ -48,19 +48,19 @@ def check_in(request):
     if not user_location:
         return Response(
             {"error": "Location not captured. Please refresh and try again."},
-            status=status.HTTP_400_BAD_REQUEST
+            status=400
         )
 
-    # 2️⃣ Get allowed office location (admin-defined)
+    # 2️⃣ Get admin-defined allowed location
     try:
         allowed = user.allowedlocation
     except AllowedLocation.DoesNotExist:
         return Response(
             {"error": "No office location assigned by admin"},
-            status=status.HTTP_403_FORBIDDEN
+            status=403
         )
 
-    # 3️⃣ Distance check
+    # 3️⃣ Distance validation
     distance = calculate_distance(
         user_location.latitude,
         user_location.longitude,
@@ -75,7 +75,7 @@ def check_in(request):
                 "distance_meters": round(distance, 2),
                 "allowed_radius": allowed.radius_meters
             },
-            status=status.HTTP_403_FORBIDDEN
+            status=403
         )
 
     # 4️⃣ Save attendance
@@ -85,19 +85,16 @@ def check_in(request):
         user=user,
         date=today,
         defaults={
-            'check_in': ist_now.time(),
-            'status': 'Checked In'
+            "check_in": ist_now.time(),
+            "status": "Checked In"
         }
     )
 
     if not created and attendance.check_in:
-        return Response(
-            {"error": "Already checked in today"},
-            status=status.HTTP_409_CONFLICT
-        )
+        return Response({"error": "Already checked in today"}, status=409)
 
     attendance.check_in = ist_now.time()
-    attendance.status = 'Checked In'
+    attendance.status = "Checked In"
     attendance.save()
 
     return Response({
@@ -123,7 +120,7 @@ def check_out(request):
     if attendance.check_out:
         return Response({"error": "Already checked out"}, status=409)
 
-    # 1️⃣ Get latest saved user location
+    # 1️⃣ Latest saved location
     user_location = (
         UserLocation.objects
         .filter(user=user)
@@ -132,21 +129,15 @@ def check_out(request):
     )
 
     if not user_location:
-        return Response(
-            {"error": "Location not captured. Please refresh and try again."},
-            status=400
-        )
+        return Response({"error": "Location not captured"}, status=400)
 
-    # 2️⃣ Get allowed office location
+    # 2️⃣ Allowed office location
     try:
         allowed = user.allowedlocation
     except AllowedLocation.DoesNotExist:
-        return Response(
-            {"error": "Office location not assigned by admin"},
-            status=status.HTTP_403_FORBIDDEN
-        )
+        return Response({"error": "Office location not assigned by admin"}, status=403)
 
-    # 3️⃣ Distance check
+    # 3️⃣ Distance validation
     distance = calculate_distance(
         user_location.latitude,
         user_location.longitude,
@@ -161,17 +152,13 @@ def check_out(request):
                 "distance_meters": round(distance, 2),
                 "allowed_radius": allowed.radius_meters
             },
-            status=status.HTTP_403_FORBIDDEN
+            status=403
         )
 
-    # 4️⃣ Validate work details
+    # 4️⃣ Validate work log
     project = request.data.get("project")
     if not project:
         return Response({"error": "Project name required"}, status=400)
-
-    work = request.data.get("work")
-    time_taken = request.data.get("time_taken")
-    progress = request.data.get("progress")
 
     # 5️⃣ Save checkout
     ist_now = timezone.localtime(timezone.now())
@@ -182,9 +169,9 @@ def check_out(request):
         user=user,
         date=today,
         project=project,
-        work=work,
-        time_taken=time_taken,
-        progress=progress,
+        work=request.data.get("work"),
+        time_taken=request.data.get("time_taken"),
+        progress=request.data.get("progress"),
         check_in=attendance.check_in,
         check_out=ist_now.time()
     )

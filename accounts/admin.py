@@ -121,8 +121,3 @@ class UserLocationAdmin(admin.ModelAdmin):
     )
     list_filter = ('user', 'created_at')
     search_fields = ('user__username', 'location_name')
-
-@admin.register(AllowedLocation)
-class AllowedLocationAdmin(admin.ModelAdmin):
-    list_display = ('user', 'latitude', 'longitude', 'radius_meters')
-    search_fields = ('user__username',)
