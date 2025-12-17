@@ -12,7 +12,9 @@ urlpatterns = [
     # path('', views.login, name='login'),
     # path('update-password/', views.update_password, name='update_password'),
     path('get-location/', views.get_location, name="get-location"),
+    path('see-location/', views.see_location, name="see_location"),
     path("attendance/tracker/", attendance_tracker, name="attendance_tracker"),
+
 
 
     path('apilogin/', LoginApiView.as_view(), name='apilogin'),

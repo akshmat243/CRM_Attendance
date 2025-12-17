@@ -15,7 +15,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font
 import csv
 from .serializers import UserSerializer
-from .models import Attendance, Profile, Leave, Holiday, Task, WorkLog, AllowedLocation
+from .models import Attendance, Profile, Leave, Holiday, Task, WorkLog, AllowedLocation, UserLocation
 from .serializers import (
     AttendanceSerializer, AttendanceByDateSerializer,
     ProfileSerializer, LeaveSerializer, HolidaySerializer, TaskSerializer
@@ -783,26 +783,43 @@ def update_task_status(request, task_uid):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def get_location(request):
+    print("USER:", request.user)
+
     lat = request.data.get('latitude')
     lng = request.data.get('longitude')
     accuracy = request.data.get('accuracy')
 
     if lat is None or lng is None:
-        return Response(
-            {"error": "Latitude and Longitude required"},
-            status=status.HTTP_400_BAD_REQUEST
-        )
+        return Response({"error": "Latitude & Longitude required"}, status=400)
 
-    # OPTIONAL: save location
-    # UserLocation.objects.create(
-    #     user=request.user,
-    #     latitude=lat,
-    #     longitude=lng,
-    #     accuracy=accuracy
-    # )
+    loc = UserLocation.objects.create(
+        user=request.user,
+        latitude=float(lat),
+        longitude=float(lng),
+        accuracy=accuracy
+    )
+
+    print("SAVED LOCATION ID:", loc.id)
+
+    return Response({"message": "Location saved"})
+
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def see_location(request):
+    print("SEE USER:", request.user)
+
+    location = UserLocation.objects.filter(
+        user=request.user
+    ).order_by('-created_at').first()
+
+    if not location:
+        return Response({"message": "No location found"})
 
     return Response({
-        "message": "Location received",
-        "latitude": lat,
-        "longitude": lng
+        "latitude": location.latitude,
+        "longitude": location.longitude,
+        "accuracy": location.accuracy,
+        "time": location.created_at
     })
