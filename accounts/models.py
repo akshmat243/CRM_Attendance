@@ -13,7 +13,7 @@ import random
 import string
 import shortuuid
 import re
-import time
+from datetime import time
 
 
 
@@ -268,3 +268,11 @@ class AllowedLocation(models.Model):
 
     def __str__(self):
         return f"{self.user.username} - {self.radius_meters}m zone"
+
+
+class UserLocation(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    latitude = models.FloatField()
+    longitude = models.FloatField()
+    accuracy = models.FloatField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)

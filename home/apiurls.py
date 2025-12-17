@@ -5,11 +5,13 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
+from accounts import views
 
 
 urlpatterns = [
     # path('', views.login, name='login'),
     # path('update-password/', views.update_password, name='update_password'),
+    path('get-location/', views.get_location, name="get-location"),
     path("attendance/tracker/", attendance_tracker, name="attendance_tracker"),
 
 

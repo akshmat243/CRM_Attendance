@@ -776,3 +776,33 @@ def update_task_status(request, task_uid):
     task.status = status_val
     task.save()
     return Response({"message": "Status updated", "status": status_val})
+
+
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def get_location(request):
+    lat = request.data.get('latitude')
+    lng = request.data.get('longitude')
+    accuracy = request.data.get('accuracy')
+
+    if lat is None or lng is None:
+        return Response(
+            {"error": "Latitude and Longitude required"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # OPTIONAL: save location
+    # UserLocation.objects.create(
+    #     user=request.user,
+    #     latitude=lat,
+    #     longitude=lng,
+    #     accuracy=accuracy
+    # )
+
+    return Response({
+        "message": "Location received",
+        "latitude": lat,
+        "longitude": lng
+    })
