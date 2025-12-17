@@ -7,6 +7,8 @@ from django_filters import rest_framework as django_filters
 from datetime import date
 from datetime import datetime, timedelta
 from rest_framework import status, viewsets
+
+# from CRM import accounts
 from .serializers import *
 from .models import *
 from django.shortcuts import render
@@ -59,6 +61,9 @@ from django.utils.timezone import get_current_timezone
 
 from rest_framework.permissions import BasePermission
 from django.apps import apps
+from accounts import models
+from django.db.models import Avg
+
 
 logger = logging.getLogger(__name__)
 User = apps.get_model('home', 'User')
@@ -192,6 +197,58 @@ class MarketingAccessPermission(BasePermission):
 #             return Response(res, status=status.HTTP_400_BAD_REQUEST)
 
 
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def attendance_tracker(request):
+    user = request.user
+    month = request.GET.get('month')  # YYYY-MM
+
+    if not month:
+        return Response({"error": "month=YYYY-MM required"}, status=400)
+
+    year, month = map(int, month.split('-'))
+
+    qs = models.Attendance.objects.filter(
+        user=user,
+        date__year=year,
+        date__month=month
+    )
+
+    present_days = qs.filter(status='Present').count()
+
+    late_arrivals = qs.filter(late_minutes__gt=0).count()
+
+    avg_working = qs.exclude(
+        working_hours__isnull=True
+    ).aggregate(avg=Avg('working_hours'))['avg']
+
+    avg_hours = 0
+    if avg_working:
+        avg_hours = round(avg_working.total_seconds() / 3600, 2)
+
+    # ABSENT CALCULATION
+    total_days = monthrange(year, month)[1]
+    holidays = models.Holiday.objects.filter(
+        date__year=year,
+        date__month=month
+    ).count()
+
+    approved_leaves = models.Leave.objects.filter(
+        user=user,
+        date__year=year,
+        date__month=month,
+        status='Approved'
+    ).count()
+
+    working_days = total_days - holidays - approved_leaves
+    absent_days = max(working_days - present_days, 0)
+
+    return Response({
+        "present_days": present_days,
+        "absent_days": absent_days,
+        "late_arrivals": late_arrivals,
+        "avg_working_hours": avg_hours
+    })
 
 
 

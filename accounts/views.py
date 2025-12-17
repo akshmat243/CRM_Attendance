@@ -15,12 +15,14 @@ from openpyxl import Workbook
 from openpyxl.styles import Font
 import csv
 from .serializers import UserSerializer
-from .models import Attendance, Profile, Leave, Holiday, Task, WorkLog
+from .models import Attendance, Profile, Leave, Holiday, Task, WorkLog, AllowedLocation
 from .serializers import (
     AttendanceSerializer, AttendanceByDateSerializer,
     ProfileSerializer, LeaveSerializer, HolidaySerializer, TaskSerializer
 )
 from .permissions import IsAdmin
+from .utils import calculate_distance
+
 
 User = get_user_model()
 
@@ -28,19 +30,53 @@ User = get_user_model()
 # ————————————————————————————————————————
 # 1. CHECK-IN & CHECK-OUT (NEW & FIXED)
 # ————————————————————————————————————————
+
 @api_view(['POST'])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated])
 def check_in(request):
     user = request.user
     today = date.today()
 
-    # Get IST time correctly
+    user_lat = request.data.get("latitude")
+    user_lng = request.data.get("longitude")
+
+    if not user_lat or not user_lng:
+        return Response(
+            {"error": "Latitude and longitude are required"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    try:
+        allowed = user.allowedlocation
+    except AllowedLocation.DoesNotExist:
+        return Response(
+            {"error": "No office location assigned by admin"},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    distance = calculate_distance(
+        float(user_lat),
+        float(user_lng),
+        allowed.latitude,
+        allowed.longitude
+    )
+
+    if distance > allowed.radius_meters:
+        return Response(
+            {
+                "error": "You are outside the allowed check-in zone",
+                "distance_meters": round(distance, 2),
+                "allowed_radius": allowed.radius_meters
+            },
+            status=status.HTTP_403_FORBIDDEN
+        )
+
     ist_now = timezone.localtime(timezone.now())
 
     attendance, created = Attendance.objects.get_or_create(
         user=user,
         date=today,
-        defaults={'check_in': ist_now.time(), 'status': 'Present'}
+        defaults={'check_in': ist_now.time(), 'status': 'Checked In'}
     )
 
     if not created and attendance.check_in:
@@ -50,12 +86,13 @@ def check_in(request):
         )
 
     attendance.check_in = ist_now.time()
-    attendance.status = 'Present'
+    attendance.status = 'Checked In'
     attendance.save()
 
     return Response({
         "message": "Checked in successfully",
-        "check_in": ist_now.strftime("%H:%M:%S")   # Always IST
+        "check_in": ist_now.strftime("%H:%M:%S"),
+        "distance_meters": round(distance, 2)
     })
 
 
@@ -74,31 +111,61 @@ def check_out(request):
     if attendance.check_out:
         return Response({"error": "Already checked out"}, status=409)
 
-    # -----------------------------------------------
-    # 1. VALIDATE form inputs
-    # -----------------------------------------------
+    # --------------------------------------------------
+    # LOCATION VALIDATION (MANDATORY – boss requirement)
+    # --------------------------------------------------
+    user_lat = request.data.get("latitude")
+    user_lng = request.data.get("longitude")
+
+    if not user_lat or not user_lng:
+        return Response(
+            {"error": "Location required for check-out"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    try:
+        allowed = user.allowedlocation
+    except AllowedLocation.DoesNotExist:
+        return Response(
+            {"error": "Office location not assigned by admin"},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    distance = calculate_distance(
+        float(user_lat),
+        float(user_lng),
+        allowed.latitude,
+        allowed.longitude
+    )
+
+    if distance > allowed.radius_meters:
+        return Response(
+            {
+                "error": "Outside allowed check-out zone",
+                "distance_meters": round(distance, 2),
+                "allowed_radius": allowed.radius_meters
+            },
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    # --------------------------------------------------
+    # VALIDATE FORM DATA
+    # --------------------------------------------------
     project = request.data.get("project")
+    if not project:
+        return Response({"error": "Project name required"}, status=400)
+
     work = request.data.get("work")
     time_taken = request.data.get("time_taken")
     progress = request.data.get("progress")
 
-    if not project:
-        return Response({"error": "Project name required"}, status=400)
-
-    # -----------------------------------------------
-    # 2. Convert to IST
-    # -----------------------------------------------
+    # --------------------------------------------------
+    # SAVE CHECK-OUT
+    # --------------------------------------------------
     ist_now = timezone.localtime(timezone.now())
-
-    # -----------------------------------------------
-    # 3. Save Attendance checkout time
-    # -----------------------------------------------
     attendance.check_out = ist_now.time()
     attendance.save()
 
-    # -----------------------------------------------
-    # 4. Create WorkLog entry
-    # -----------------------------------------------
     WorkLog.objects.create(
         user=user,
         date=today,
@@ -112,7 +179,8 @@ def check_out(request):
 
     return Response({
         "message": "Checked out successfully",
-        "check_out": ist_now.strftime("%H:%M:%S")
+        "check_out": ist_now.strftime("%H:%M:%S"),
+        "distance_meters": round(distance, 2)
     })
 
 

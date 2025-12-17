@@ -35,21 +35,24 @@ class WorkLogSerializer(serializers.ModelSerializer):
 
 
 class AttendanceSerializer(serializers.ModelSerializer):
-    uid = serializers.CharField(read_only=True)
-    full_name = serializers.SerializerMethodField()  # ← Change to method for fallback
-    user_uid = serializers.CharField(source='user.uid', read_only=True)
+    late_minutes = serializers.IntegerField(read_only=True)
+    working_hours = serializers.SerializerMethodField()
 
     class Meta:
         model = Attendance
-        fields = ['uid', 'user_uid', 'full_name', 'date', 'check_in', 'check_out', 'status', 'working_hours']
+        fields = [
+            'uid', 'date', 'check_in', 'check_out',
+            'status', 'late_minutes', 'working_hours'
+        ]
 
-    def get_full_name(self, obj):
-        profile = obj.user.profile
-        return (
-            profile.full_name or 
-            obj.user.get_full_name() or 
-            obj.user.username
-        )
+    def get_working_hours(self, obj):
+        if obj.working_hours:
+            total = obj.working_hours.total_seconds()
+            h = int(total // 3600)
+            m = int((total % 3600) // 60)
+            return f"{h}:{m:02}"
+        return "0:00"
+
 
 
 class AttendanceByDateSerializer(serializers.ModelSerializer):

@@ -12,6 +12,9 @@ import uuid
 import random
 import string
 import shortuuid
+import re
+import time
+
 
 
 # ----------------------------------------------------------------------
@@ -81,8 +84,11 @@ class Attendance(models.Model):
     check_out = models.TimeField(null=True, blank=True)
     uid = models.CharField(max_length=20, unique=True, blank=True, null=True)
 
-    # Auto-calculated fields
     working_hours = models.DurationField(null=True, blank=True)
+
+    # ✅ ADD THIS
+    late_minutes = models.PositiveIntegerField(default=0)
+
     status = models.CharField(
         max_length=12,
         choices=(
@@ -97,40 +103,48 @@ class Attendance(models.Model):
     class Meta:
         unique_together = ('user', 'date')
 
+
     # ------------------------------------------------------------------
     # AUTO-CALCULATE ON SAVE
     # ------------------------------------------------------------------
+    
+
     def save(self, *args, **kwargs):
-        # 1. UID
         if not self.uid:
             self.uid = generate_uid("A")
 
-        # 2. Status & working hours
+        if self.check_in:
+            # LATE CALCULATION
+            OFFICE_START_TIME = time(9, 0)
+            office_dt = datetime.combine(self.date, OFFICE_START_TIME)
+            checkin_dt = datetime.combine(self.date, self.check_in)
+
+            if checkin_dt > office_dt:
+                self.late_minutes = int((checkin_dt - office_dt).total_seconds() / 60)
+            else:
+                self.late_minutes = 0
+
         if self.check_in and self.check_out:
             check_in_dt = datetime.combine(self.date, self.check_in)
             check_out_dt = datetime.combine(self.date, self.check_out)
 
-            # Overnight shift handling
             if check_out_dt < check_in_dt:
                 check_out_dt += timedelta(days=1)
 
             duration = check_out_dt - check_in_dt
             self.working_hours = duration
 
-            total_hours = duration.total_seconds() / 3600
-            self.status = "Present" if 8 <= total_hours <= 9 else "Half Day"
+            hours = duration.total_seconds() / 3600
+            self.status = "Present" if hours >= 8 else "Half Day"
 
         elif self.check_in:
             self.status = "Checked In"
             self.working_hours = None
         else:
             self.status = "Absent"
-            self.working_hours = None
 
         super().save(*args, **kwargs)
 
-    def __str__(self):
-        return f"{self.user.username} – {self.date} ({self.status})"
 
 
 # ----------------------------------------------------------------------
@@ -208,3 +222,49 @@ class Task(models.Model):
 
     def __str__(self):
         return f"{self.title} – {self.assigned_to.username}"
+
+
+
+
+
+def extract_lat_lng(text):
+    """
+    Extract latitude & longitude from:
+    - Google Maps URL
+    - 'lat,lng'
+    """
+    if not text:
+        return None, None
+
+    match = re.search(r'(-?\d+\.\d+),\s*(-?\d+\.\d+)', text)
+    if match:
+        return float(match.group(1)), float(match.group(2))
+
+    return None, None
+
+
+class AllowedLocation(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE)
+    latitude = models.FloatField(blank=True, null=True)
+    longitude = models.FloatField(blank=True, null=True)
+    radius_meters = models.PositiveIntegerField(default=300)
+
+    # Admin can paste Google Maps link or lat,lng
+    map_input = models.CharField(
+        max_length=500,
+        blank=True,
+        help_text="Paste Google Maps link or 'lat,lng'"
+    )
+
+    def save(self, *args, **kwargs):
+        # Auto-extract lat/lng if map_input is provided
+        if self.map_input and (not self.latitude or not self.longitude):
+            lat, lng = extract_lat_lng(self.map_input)
+            if lat is not None and lng is not None:
+                self.latitude = lat
+                self.longitude = lng
+
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.user.username} - {self.radius_meters}m zone"

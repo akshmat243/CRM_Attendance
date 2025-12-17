@@ -10,6 +10,9 @@ from rest_framework.routers import DefaultRouter
 urlpatterns = [
     # path('', views.login, name='login'),
     # path('update-password/', views.update_password, name='update_password'),
+    path("attendance/tracker/", attendance_tracker, name="attendance_tracker"),
+
+
     path('apilogin/', LoginApiView.as_view(), name='apilogin'),
     path('staff_assigned_leads/', staff_assigned_leads.as_view(), name='staff_assigned_leads'),
     path('status-update/', StatusUpdateAPIView.as_view(), name='status-update'),

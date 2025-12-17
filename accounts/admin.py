@@ -10,6 +10,8 @@ from django.http import HttpResponse
 from datetime import date
 from calendar import monthrange
 from .models import Attendance, User, Task
+from .models import AllowedLocation
+
 
 admin.site.register(WorkLog)
 
@@ -104,3 +106,10 @@ class TaskAdmin(admin.ModelAdmin):
     list_display = ('title', 'assigned_to', 'created_by', 'status', 'due_date', 'created_at')
     list_filter = ('status', 'assigned_to', 'created_by')
     search_fields = ('title', 'description', 'assigned_to__username')
+
+
+
+@admin.register(AllowedLocation)
+class AllowedLocationAdmin(admin.ModelAdmin):
+    list_display = ('user', 'latitude', 'longitude', 'radius_meters')
+    search_fields = ('user__username',)
