@@ -37,15 +37,21 @@ def check_in(request):
     user = request.user
     today = date.today()
 
-    user_lat = request.data.get("latitude")
-    user_lng = request.data.get("longitude")
+    # 1️⃣ Get latest saved user location
+    user_location = (
+        UserLocation.objects
+        .filter(user=user)
+        .order_by('-created_at')
+        .first()
+    )
 
-    if not user_lat or not user_lng:
+    if not user_location:
         return Response(
-            {"error": "Latitude and longitude are required"},
+            {"error": "Location not captured. Please refresh and try again."},
             status=status.HTTP_400_BAD_REQUEST
         )
 
+    # 2️⃣ Get allowed office location (admin-defined)
     try:
         allowed = user.allowedlocation
     except AllowedLocation.DoesNotExist:
@@ -54,9 +60,10 @@ def check_in(request):
             status=status.HTTP_403_FORBIDDEN
         )
 
+    # 3️⃣ Distance check
     distance = calculate_distance(
-        float(user_lat),
-        float(user_lng),
+        user_location.latitude,
+        user_location.longitude,
         allowed.latitude,
         allowed.longitude
     )
@@ -71,12 +78,16 @@ def check_in(request):
             status=status.HTTP_403_FORBIDDEN
         )
 
+    # 4️⃣ Save attendance
     ist_now = timezone.localtime(timezone.now())
 
     attendance, created = Attendance.objects.get_or_create(
         user=user,
         date=today,
-        defaults={'check_in': ist_now.time(), 'status': 'Checked In'}
+        defaults={
+            'check_in': ist_now.time(),
+            'status': 'Checked In'
+        }
     )
 
     if not created and attendance.check_in:
@@ -92,6 +103,7 @@ def check_in(request):
     return Response({
         "message": "Checked in successfully",
         "check_in": ist_now.strftime("%H:%M:%S"),
+        "location": user_location.location_name,
         "distance_meters": round(distance, 2)
     })
 
@@ -111,18 +123,21 @@ def check_out(request):
     if attendance.check_out:
         return Response({"error": "Already checked out"}, status=409)
 
-    # --------------------------------------------------
-    # LOCATION VALIDATION (MANDATORY – boss requirement)
-    # --------------------------------------------------
-    user_lat = request.data.get("latitude")
-    user_lng = request.data.get("longitude")
+    # 1️⃣ Get latest saved user location
+    user_location = (
+        UserLocation.objects
+        .filter(user=user)
+        .order_by('-created_at')
+        .first()
+    )
 
-    if not user_lat or not user_lng:
+    if not user_location:
         return Response(
-            {"error": "Location required for check-out"},
-            status=status.HTTP_400_BAD_REQUEST
+            {"error": "Location not captured. Please refresh and try again."},
+            status=400
         )
 
+    # 2️⃣ Get allowed office location
     try:
         allowed = user.allowedlocation
     except AllowedLocation.DoesNotExist:
@@ -131,9 +146,10 @@ def check_out(request):
             status=status.HTTP_403_FORBIDDEN
         )
 
+    # 3️⃣ Distance check
     distance = calculate_distance(
-        float(user_lat),
-        float(user_lng),
+        user_location.latitude,
+        user_location.longitude,
         allowed.latitude,
         allowed.longitude
     )
@@ -148,9 +164,7 @@ def check_out(request):
             status=status.HTTP_403_FORBIDDEN
         )
 
-    # --------------------------------------------------
-    # VALIDATE FORM DATA
-    # --------------------------------------------------
+    # 4️⃣ Validate work details
     project = request.data.get("project")
     if not project:
         return Response({"error": "Project name required"}, status=400)
@@ -159,9 +173,7 @@ def check_out(request):
     time_taken = request.data.get("time_taken")
     progress = request.data.get("progress")
 
-    # --------------------------------------------------
-    # SAVE CHECK-OUT
-    # --------------------------------------------------
+    # 5️⃣ Save checkout
     ist_now = timezone.localtime(timezone.now())
     attendance.check_out = ist_now.time()
     attendance.save()
@@ -180,6 +192,7 @@ def check_out(request):
     return Response({
         "message": "Checked out successfully",
         "check_out": ist_now.strftime("%H:%M:%S"),
+        "location": user_location.location_name,
         "distance_meters": round(distance, 2)
     })
 
