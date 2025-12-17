@@ -15,7 +15,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font
 import csv
 from .serializers import UserSerializer
-from .models import Attendance, Profile, Leave, Holiday, Task, WorkLog, AllowedLocation, UserLocation
+from .models import Attendance, Profile, Leave, Holiday, Task, WorkLog, AllowedLocation, UserLocation, extract_lat_lng, get_location_name
 from .serializers import (
     AttendanceSerializer, AttendanceByDateSerializer,
     ProfileSerializer, LeaveSerializer, HolidaySerializer, TaskSerializer
@@ -783,43 +783,47 @@ def update_task_status(request, task_uid):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def get_location(request):
-    print("USER:", request.user)
+    map_link = request.data.get("map_link")
 
-    lat = request.data.get('latitude')
-    lng = request.data.get('longitude')
-    accuracy = request.data.get('accuracy')
+    if not map_link:
+        return Response({"error": "Map link required"}, status=400)
 
-    if lat is None or lng is None:
-        return Response({"error": "Latitude & Longitude required"}, status=400)
+    lat, lng = extract_lat_lng(map_link)
 
-    loc = UserLocation.objects.create(
+    if not lat or not lng:
+        return Response({"error": "Invalid Google Maps link"}, status=400)
+
+    location_name = get_location_name(lat, lng)
+
+    UserLocation.objects.create(
         user=request.user,
-        latitude=float(lat),
-        longitude=float(lng),
-        accuracy=accuracy
+        latitude=lat,
+        longitude=lng,
+        location_name=location_name or ""
     )
 
-    print("SAVED LOCATION ID:", loc.id)
+    return Response({
+        "message": "Location saved",
+        "latitude": lat,
+        "longitude": lng,
+        "location_name": location_name
+    })
 
-    return Response({"message": "Location saved"})
 
 
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def see_location(request):
-    print("SEE USER:", request.user)
+    loc = UserLocation.objects.filter(user=request.user).last()
 
-    location = UserLocation.objects.filter(
-        user=request.user
-    ).order_by('-created_at').first()
-
-    if not location:
+    if not loc:
         return Response({"message": "No location found"})
 
     return Response({
-        "latitude": location.latitude,
-        "longitude": location.longitude,
-        "accuracy": location.accuracy,
-        "time": location.created_at
+        "latitude": loc.latitude,
+        "longitude": loc.longitude,
+        "location_name": loc.location_name,
+        "time": loc.created_at
     })
+

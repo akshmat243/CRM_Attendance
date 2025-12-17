@@ -14,7 +14,7 @@ import string
 import shortuuid
 import re
 from datetime import time
-
+import requests
 
 
 # ----------------------------------------------------------------------
@@ -227,20 +227,39 @@ class Task(models.Model):
 
 
 
-def extract_lat_lng(text):
-    """
-    Extract latitude & longitude from:
-    - Google Maps URL
-    - 'lat,lng'
-    """
-    if not text:
-        return None, None
 
-    match = re.search(r'(-?\d+\.\d+),\s*(-?\d+\.\d+)', text)
+def extract_lat_lng(map_link):
+    """
+    Supports:
+    https://maps.google.com/?q=26.9124,75.7873
+    https://www.google.com/maps/@26.9124,75.7873,17z
+    """
+
+    match = re.search(r'@(-?\d+\.\d+),(-?\d+\.\d+)', map_link)
+    if match:
+        return float(match.group(1)), float(match.group(2))
+
+    match = re.search(r'q=(-?\d+\.\d+),(-?\d+\.\d+)', map_link)
     if match:
         return float(match.group(1)), float(match.group(2))
 
     return None, None
+
+
+def get_location_name(lat, lng):
+    url = "https://nominatim.openstreetmap.org/reverse"
+    params = {
+        "lat": lat,
+        "lon": lng,
+        "format": "json"
+    }
+    headers = {"User-Agent": "AttendanceApp"}
+
+    res = requests.get(url, params=params, headers=headers, timeout=5)
+    if res.status_code == 200:
+        return res.json().get("display_name")
+
+    return None
 
 
 class AllowedLocation(models.Model):
@@ -274,5 +293,5 @@ class UserLocation(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     latitude = models.FloatField()
     longitude = models.FloatField()
-    accuracy = models.FloatField(null=True, blank=True)
+    location_name = models.CharField(max_length=255, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
