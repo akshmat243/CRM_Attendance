@@ -264,11 +264,10 @@ def get_location_name(lat, lng):
 
 class AllowedLocation(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
-    latitude = models.FloatField(blank=True, null=True)
-    longitude = models.FloatField(blank=True, null=True)
+    latitude = models.FloatField(null=True, blank=True)
+    longitude = models.FloatField(null=True, blank=True)
     radius_meters = models.PositiveIntegerField(default=300)
 
-    # Admin can paste Google Maps link or lat,lng
     map_input = models.CharField(
         max_length=500,
         blank=True,
@@ -277,7 +276,7 @@ class AllowedLocation(models.Model):
 
     def save(self, *args, **kwargs):
         # Auto-extract lat/lng if map_input is provided
-        if self.map_input and (not self.latitude or not self.longitude):
+        if self.map_input and (self.latitude is None or self.longitude is None):
             lat, lng = extract_lat_lng(self.map_input)
             if lat is not None and lng is not None:
                 self.latitude = lat

@@ -30,14 +30,13 @@ User = get_user_model()
 # ————————————————————————————————————————
 # 1. CHECK-IN & CHECK-OUT (NEW & FIXED)
 # ————————————————————————————————————————
-
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def check_in(request):
     user = request.user
     today = date.today()
 
-    # 1️⃣ Get latest saved user location
+    # 1️⃣ Latest saved user location
     user_location = (
         UserLocation.objects
         .filter(user=user)
@@ -51,14 +50,14 @@ def check_in(request):
             status=400
         )
 
-    # 2️⃣ Get admin-defined allowed location
-    try:
-        allowed = user.allowedlocation
-    except AllowedLocation.DoesNotExist:
-        return Response(
-            {"error": "No office location assigned by admin"},
-            status=403
-        )
+    # 2️⃣ Allowed office location
+    allowed = AllowedLocation.objects.filter(user=user).first()
+    if not allowed:
+            return Response(
+                {"error": "Please set location before check-in"},
+                status=400
+            )
+
 
     # 3️⃣ Distance validation
     distance = calculate_distance(
@@ -105,7 +104,6 @@ def check_in(request):
     })
 
 
-
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def check_out(request):
@@ -120,7 +118,6 @@ def check_out(request):
     if attendance.check_out:
         return Response({"error": "Already checked out"}, status=409)
 
-    # 1️⃣ Latest saved location
     user_location = (
         UserLocation.objects
         .filter(user=user)
@@ -131,13 +128,14 @@ def check_out(request):
     if not user_location:
         return Response({"error": "Location not captured"}, status=400)
 
-    # 2️⃣ Allowed office location
-    try:
-        allowed = user.allowedlocation
-    except AllowedLocation.DoesNotExist:
-        return Response({"error": "Office location not assigned by admin"}, status=403)
+    allowed = AllowedLocation.objects.filter(user=user).first()
+    if not allowed:
+        return Response(
+            {"error": "Please set location before check-out"},
+            status=400
+        )
 
-    # 3️⃣ Distance validation
+
     distance = calculate_distance(
         user_location.latitude,
         user_location.longitude,
@@ -155,12 +153,10 @@ def check_out(request):
             status=403
         )
 
-    # 4️⃣ Validate work log
     project = request.data.get("project")
     if not project:
         return Response({"error": "Project name required"}, status=400)
 
-    # 5️⃣ Save checkout
     ist_now = timezone.localtime(timezone.now())
     attendance.check_out = ist_now.time()
     attendance.save()
@@ -790,11 +786,12 @@ def get_location(request):
 
     lat, lng = extract_lat_lng(map_link)
 
-    if not lat or not lng:
+    if lat is None or lng is None:
         return Response({"error": "Invalid Google Maps link"}, status=400)
 
     location_name = get_location_name(lat, lng)
 
+    # 1️⃣ Save user live location
     UserLocation.objects.create(
         user=request.user,
         latitude=lat,
@@ -802,8 +799,18 @@ def get_location(request):
         location_name=location_name or ""
     )
 
+    # 2️⃣ CREATE OR UPDATE AllowedLocation (AUTO)
+    AllowedLocation.objects.update_or_create(
+        user=request.user,
+        defaults={
+            "latitude": lat,
+            "longitude": lng,
+            "radius_meters": 300,  # you can change
+        }
+    )
+
     return Response({
-        "message": "Location saved",
+        "message": "Location saved and set as allowed location",
         "latitude": lat,
         "longitude": lng,
         "location_name": location_name
