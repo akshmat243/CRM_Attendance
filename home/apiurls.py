@@ -11,6 +11,8 @@ from accounts import views
 urlpatterns = [
     # path('', views.login, name='login'),
     # path('update-password/', views.update_password, name='update_password'),
+    path("attendance/recent-history/", views.recent_attendance_history, name="Recent-history"),
+
     path('get-location/', views.get_location, name="get-location"),
     path('see-location/', views.see_location, name="see_location"),
     path("attendance/tracker/", attendance_tracker, name="attendance_tracker"),

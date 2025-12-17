@@ -10,7 +10,7 @@ from django.contrib.auth import alogout, get_user_model
 from django.db.models import Q, Count
 from django.http import HttpResponse
 from calendar import monthrange
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from openpyxl import Workbook
 from openpyxl.styles import Font
 import csv
@@ -827,3 +827,55 @@ def see_location(request):
         "time": loc.created_at
     })
 
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def recent_attendance_history(request):
+    user = request.user
+
+    days = int(request.GET.get("days", 7))
+    start_date = timezone.now().date() - timedelta(days=days)
+
+    attendances = (
+        Attendance.objects
+        .filter(user=user, date__gte=start_date)
+        .order_by('-date')
+    )
+
+    results = []
+
+    for att in attendances:
+        check_in_dt = None
+        if att.check_in:
+            check_in_dt = datetime.combine(att.date, att.check_in)
+
+        # get nearest location BEFORE check-in
+        location = None
+        if check_in_dt:
+            location = (
+                UserLocation.objects
+                .filter(
+                    user=user,
+                    created_at__lte=check_in_dt
+                )
+                .order_by('-created_at')
+                .first()
+            )
+
+        results.append({
+            "date": att.date,
+            "check_in": att.check_in,
+            "check_out": att.check_out,
+            "working_hours": att.working_hours,
+            "status": att.status,
+
+            # merged location
+            "location_name": location.location_name if location else None,
+            "latitude": location.latitude if location else None,
+            "longitude": location.longitude if location else None,
+            "location_time": location.created_at if location else None,
+        })
+
+    return Response({
+        "count": len(results),
+        "results": results
+    })
