@@ -9,8 +9,9 @@ from openpyxl.styles import Font
 from django.http import HttpResponse
 from datetime import date
 from calendar import monthrange
-from .models import Attendance, User, Task
+from .models import Attendance, User, Task, UserLocation
 from .models import AllowedLocation
+
 
 
 admin.site.register(WorkLog)
@@ -109,7 +110,15 @@ class TaskAdmin(admin.ModelAdmin):
 
 
 
-@admin.register(AllowedLocation)
-class AllowedLocationAdmin(admin.ModelAdmin):
-    list_display = ('user', 'latitude', 'longitude', 'radius_meters')
-    search_fields = ('user__username',)
+@admin.register(UserLocation)
+class UserLocationAdmin(admin.ModelAdmin):
+    list_display = (
+        'id',
+        'user',
+        'latitude',
+        'longitude',
+        'location_name',
+        'created_at',
+    )
+    list_filter = ('user', 'created_at')
+    search_fields = ('user__username', 'location_name')
