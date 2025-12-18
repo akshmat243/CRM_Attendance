@@ -62,6 +62,7 @@ from django.utils.timezone import get_current_timezone
 from rest_framework.permissions import BasePermission
 from django.apps import apps
 from accounts import models
+from accounts.models import Leave
 from django.db.models import Avg
 
 
@@ -8814,3 +8815,58 @@ class TodayInterestedCountAPIView(APIView):
         }
 
         return Response(data)
+
+LEAVE_LIMITS = {
+    "Sick": 12,
+    "Casual": 12,
+}
+
+def calculate_used_leaves(user):
+    leaves = Leave.objects.filter(
+        user=user,
+        status="Approved"
+    )
+
+    used = {
+        "Sick": 0,
+        "Casual": 0,
+    }
+
+    for leave in leaves:
+        days = (leave.end_date - leave.start_date).days + 1
+        if leave.leave_type in used:
+            used[leave.leave_type] += days
+
+    return used
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def profile_leave_balance(request):
+    user = request.user
+
+    used = calculate_used_leaves(user)
+
+    sick_used = used["Sick"]
+    casual_used = used["Casual"]
+
+    sick_total = LEAVE_LIMITS["Sick"]
+    casual_total = LEAVE_LIMITS["Casual"]
+
+    total_used = sick_used + casual_used
+    total_allowed = sick_total + casual_total
+
+    return Response({
+        "total_leaves": {
+            "used": total_used,
+            "total": total_allowed
+        },
+        "sick_leave": {
+            "used": sick_used,
+            "total": sick_total
+        },
+        "casual_leave": {
+            "used": casual_used,
+            "total": casual_total
+        }
+    })

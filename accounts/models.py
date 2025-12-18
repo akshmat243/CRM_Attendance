@@ -57,15 +57,68 @@ class WorkLog(models.Model):
 # Profile
 # ----------------------------------------------------------------------
 class Profile(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name='profile'
+    )
+
+    # --------------------
+    # Basic Info (existing)
+    # --------------------
     full_name = models.CharField(max_length=200, null=True, blank=True)
     phone = models.CharField(max_length=15, null=True, blank=True)
     department = models.CharField(max_length=100, null=True, blank=True)
     designation = models.CharField(max_length=100, null=True, blank=True)
     join_date = models.DateField(null=True, blank=True)
-    slug = models.SlugField(max_length=250, unique=True, blank=True, db_index=True)
-    delete_code = models.CharField(max_length=10, blank=True, null=True, unique=True)
-    
+
+    # --------------------
+    # Contact Information (NEW)
+    # --------------------
+    email = models.EmailField(null=True, blank=True)
+    address = models.TextField(null=True, blank=True)
+    reports_to = models.CharField(
+        max_length=100,
+        null=True,
+        blank=True,
+        help_text="Manager / Team Leader name"
+    )
+
+    # --------------------
+    # Skills & Education (NEW)
+    # --------------------
+    education = models.CharField(max_length=200, null=True, blank=True)
+    skills = models.TextField(
+        null=True,
+        blank=True,
+        help_text="Comma separated skills (e.g. Python, Django, REST)"
+    )
+
+    # --------------------
+    # System Fields
+    # --------------------
+    slug = models.SlugField(
+        max_length=250,
+        unique=True,
+        blank=True,
+        db_index=True
+    )
+    delete_code = models.CharField(
+        max_length=10,
+        blank=True,
+        null=True,
+        unique=True
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    # --------------------
+    # Helpers
+    # --------------------
+    def skill_list(self):
+        return [s.strip() for s in self.skills.split(",")] if self.skills else []
+
     def save(self, *args, **kwargs):
         if not self.delete_code:
             self.delete_code = generate_uid("D")[:7]  # e.g. D9XK2MP
@@ -73,6 +126,7 @@ class Profile(models.Model):
 
     def __str__(self):
         return self.full_name or self.user.username
+
 
 # ----------------------------------------------------------------------
 # Attendance

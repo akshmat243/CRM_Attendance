@@ -73,17 +73,49 @@ class AttendanceByDateSerializer(serializers.ModelSerializer):
 
 class ProfileSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
-    delete_code = serializers.CharField(read_only=True)  # ← Hidden from input
+    delete_code = serializers.CharField(read_only=True)
+    skills = serializers.SerializerMethodField()
 
     class Meta:
         model = Profile
         fields = [
-            'id', 'user', 'full_name', 'phone', 'department',
-            'designation', 'join_date', 'slug', 'delete_code'
+            # System
+            'id',
+            'slug',
+            'delete_code',
+
+            # User
+            'user',
+
+            # Basic Info
+            'full_name',
+            'phone',
+            'department',
+            'designation',
+            'join_date',
+
+            # Contact Information (NEW)
+            'email',
+            'address',
+            'reports_to',
+
+            # Skills & Education (NEW)
+            'education',
+            'skills',
         ]
+
         extra_kwargs = {
-            'delete_code': {'read_only': True}  # ← Never shown in responses
+            'delete_code': {'read_only': True},
+            'slug': {'read_only': True},
+            'user': {'read_only': True},
         }
+
+    def get_skills(self, obj):
+        """
+        Return skills as a list instead of comma-separated string
+        """
+        return obj.skill_list()
+
 
 class LeaveSerializer(serializers.ModelSerializer):
     total_days = serializers.ReadOnlyField()

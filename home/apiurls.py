@@ -22,6 +22,10 @@ urlpatterns = [
     path("attendance/tracker/", attendance_tracker, name="attendance_tracker"),
 
 
+    path("profile/leave-balance/", profile_leave_balance, name="Leave_Balance"),
+
+
+
 
     path('apilogin/', LoginApiView.as_view(), name='apilogin'),
     path('staff_assigned_leads/', staff_assigned_leads.as_view(), name='staff_assigned_leads'),

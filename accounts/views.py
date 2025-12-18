@@ -606,7 +606,8 @@ def leave_history(request):
             "end_date": leave.end_date,
             "total_days": (leave.end_date - leave.start_date).days + 1,
             "status": leave.status,
-            "applied_on": leave.created_at
+            "applied_on": leave.created_at,
+            "reason": leave.reason,
         })
 
     return Response({
