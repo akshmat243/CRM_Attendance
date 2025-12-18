@@ -17,3 +17,6 @@ def calculate_distance(lat1, lon1, lat2, lon2):
 
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
     return R * c
+
+def can_approve(user):
+    return user.is_superuser or getattr(user, "role", None) in ["admin", "team_leader"]

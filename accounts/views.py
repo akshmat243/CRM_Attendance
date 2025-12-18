@@ -14,6 +14,8 @@ from datetime import date, datetime, time, timedelta
 from openpyxl import Workbook
 from openpyxl.styles import Font
 import csv
+
+from home.api import CustomIsSuperuser, IsCustomAdminUser, IsCustomStaffUser, IsCustomTeamLeaderUser
 from .serializers import UserSerializer
 from .models import Attendance, Profile, Leave, Holiday, Task, WorkLog, AllowedLocation, UserLocation, extract_lat_lng, get_location_name
 from .serializers import (
@@ -21,7 +23,7 @@ from .serializers import (
     ProfileSerializer, LeaveSerializer, HolidaySerializer, TaskSerializer
 )
 from .permissions import IsAdmin
-from .utils import calculate_distance
+from .utils import calculate_distance, can_approve
 
 
 User = get_user_model()
@@ -53,10 +55,11 @@ def check_in(request):
     # 2️⃣ Allowed office location
     allowed = AllowedLocation.objects.filter(user=user).first()
     if not allowed:
-            return Response(
-                {"error": "Please set location before check-in"},
-                status=400
-            )
+        return Response(
+            {"error": "Location not approved yet"},
+            status=403
+        )
+
 
 
     # 3️⃣ Distance validation
@@ -131,9 +134,10 @@ def check_out(request):
     allowed = AllowedLocation.objects.filter(user=user).first()
     if not allowed:
         return Response(
-            {"error": "Please set location before check-out"},
-            status=400
+            {"error": "Location not approved yet"},
+            status=403
         )
+
 
 
     distance = calculate_distance(
@@ -885,4 +889,67 @@ def recent_attendance_history(request):
     return Response({
         "count": len(results),
         "results": results
+    })
+
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated , IsCustomTeamLeaderUser, IsCustomAdminUser, IsCustomStaffUser, CustomIsSuperuser])
+def approve_user_location(request):
+    if not can_approve(request.user):
+        return Response(
+            {"error": "Approval permission denied"},
+            status=403
+        )
+
+    location_id = request.data.get("location_id")
+
+    if not location_id:
+        return Response({"error": "location_id required"}, status=400)
+
+    try:
+        location = UserLocation.objects.get(id=location_id)
+    except UserLocation.DoesNotExist:
+        return Response({"error": "Location not found"}, status=404)
+
+    # 1️⃣ Mark approved
+    location.status = "APPROVED"
+    location.save()
+
+    # 2️⃣ Save to AllowedLocation
+    AllowedLocation.objects.update_or_create(
+        user=location.user,
+        defaults={
+            "latitude": location.latitude,
+            "longitude": location.longitude,
+            "radius_meters": 300
+        }
+    )
+
+    return Response({
+        "message": "Location approved and activated",
+        "user": location.user.username,
+        "location_name": location.location_name
+    })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated, IsCustomTeamLeaderUser, IsCustomAdminUser, IsCustomStaffUser, CustomIsSuperuser])
+def reject_user_location(request):
+    if not can_approve(request.user):
+        return Response({"error": "Permission denied"}, status=403)
+
+    location_id = request.data.get("location_id")
+
+    try:
+        location = UserLocation.objects.get(id=location_id)
+    except UserLocation.DoesNotExist:
+        return Response({"error": "Location not found"}, status=404)
+
+    location.status = "REJECTED"
+    location.save()
+
+    return Response({
+        "message": "Location rejected",
+        "user": location.user.username
     })

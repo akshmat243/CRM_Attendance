@@ -128,3 +128,4 @@ class UserLocationAdmin(admin.ModelAdmin):
 class AllowedLocationAdmin(admin.ModelAdmin):
     list_display = ("user", "latitude", "longitude", "radius_meters")
     search_fields = ("user__username",)
+
