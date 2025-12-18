@@ -15,6 +15,7 @@ urlpatterns = [
     path("attendance/recent-history/", views.recent_attendance_history, name="Recent-history"),
     path("location/reject/", views.reject_user_location, name="Location_Reject"),
     path("location/approve/", views.approve_user_location, name="Location_Approve"),
+   
 
     path('get-location/', views.get_location, name="get-location"),
     path('see-location/', views.see_location, name="see_location"),

@@ -558,13 +558,61 @@ def dashboard(request):
 def request_leave(request):
     serializer = LeaveSerializer(data=request.data)
     if serializer.is_valid():
-        # Pass user directly to save() → overrides read_only
         leave = serializer.save(user=request.user)
         return Response({
             "message": "Leave request submitted",
             "leave": LeaveSerializer(leave).data
         }, status=201)
+
     return Response(serializer.errors, status=400)
+
+
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def my_leaves(request):
+    leaves = (
+        Leave.objects
+        .filter(user=request.user)
+        .order_by('-created_at')
+    )
+
+    serializer = LeaveSerializer(leaves, many=True)
+    return Response({
+        "count": leaves.count(),
+        "leaves": serializer.data
+    })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def leave_history(request):
+    """
+    Shows which leave, from when to when, how many days, and status
+    """
+    leaves = (
+        Leave.objects
+        .filter(user=request.user)
+        .order_by('-created_at')
+    )
+
+    data = []
+    for leave in leaves:
+        data.append({
+            "id": leave.id,
+            "leave_type": leave.leave_type,
+            "start_date": leave.start_date,
+            "end_date": leave.end_date,
+            "total_days": (leave.end_date - leave.start_date).days + 1,
+            "status": leave.status,
+            "applied_on": leave.created_at
+        })
+
+    return Response({
+        "count": len(data),
+        "leaves": data
+    })
 
 
 @api_view(['PATCH'])

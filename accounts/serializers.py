@@ -86,26 +86,28 @@ class ProfileSerializer(serializers.ModelSerializer):
         }
 
 class LeaveSerializer(serializers.ModelSerializer):
-    user = serializers.ReadOnlyField(source='user.username')
+    total_days = serializers.ReadOnlyField()
 
     class Meta:
         model = Leave
-        fields = ['id', 'user', 'date', 'leave_type', 'status']
-        read_only_fields = ['user', 'status']
+        fields = [
+            'id',
+            'leave_type',
+            'start_date',
+            'end_date',
+            'total_days',
+            'status',
+            'created_at',
+            'reason'
+        ]
 
     def validate(self, data):
-        date = data.get('date')
-        leave_type = data.get('leave_type')
-
-        if not date:
-            raise serializers.ValidationError({"date": "This field is required."})
-        if not leave_type:
-            raise serializers.ValidationError({"leave_type": "This field is required."})
-        if leave_type not in ["Sick", "Casual", "WFH"]:
-            raise serializers.ValidationError({
-                "leave_type": "Must be Sick, Casual, or WFH"
-            })
+        if data['end_date'] < data['start_date']:
+            raise serializers.ValidationError(
+                {"end_date": "End date cannot be before start date"}
+            )
         return data
+
 
 
 

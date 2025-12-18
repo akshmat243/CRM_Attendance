@@ -154,8 +154,9 @@ class Leave(models.Model):
     LEAVE_TYPES = (
         ("Sick", "Sick Leave"),
         ("Casual", "Casual Leave"),
-        ("WFH", "Work From Home"),
+        ("Earned", "Earned Leave"),
     )
+
     STATUS = (
         ("Pending", "Pending"),
         ("Approved", "Approved"),
@@ -163,12 +164,23 @@ class Leave(models.Model):
     )
 
     user = models.ForeignKey(User, on_delete=models.CASCADE)
-    date = models.DateField()
+
+    start_date = models.DateField()
+    end_date = models.DateField()
+
+    reason = models.CharField()
+
     leave_type = models.CharField(max_length=20, choices=LEAVE_TYPES)
     status = models.CharField(max_length=10, choices=STATUS, default="Pending")
 
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    @property
+    def total_days(self):
+        return (self.end_date - self.start_date).days + 1
+
     def __str__(self):
-        return f"{self.user.username} - {self.leave_type} ({self.date})"
+        return f"{self.user.username} - {self.leave_type} ({self.start_date} → {self.end_date})"
 
 
 # ----------------------------------------------------------------------

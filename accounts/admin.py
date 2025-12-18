@@ -93,8 +93,17 @@ def export_attendance_excel(request):
 
 @admin.register(Leave)
 class LeaveAdmin(admin.ModelAdmin):
-    list_display = ('user', 'date', 'leave_type', 'status')
-    list_filter = ('status', 'leave_type')
+    list_display = (
+        'user',
+        'leave_type',
+        'start_date',
+        'end_date',
+        'total_days',
+        'status',
+        'reason'
+    )
+    list_filter = ('leave_type', 'status')
+
 
 @admin.register(Holiday)
 class HolidayAdmin(admin.ModelAdmin):
