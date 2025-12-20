@@ -20,6 +20,7 @@ urlpatterns = [
     path("attendance/calendar/",attendance_calendar,name="attendance_calendar"),
     path("profile/reporting-to/", reporting_to, name="Reporting_To"),
     path("profile/department-members/", department_members, name="Department_Members"),
+    path("attendance/activities/",attendance_activities,name="attendance_activities"),
 
 
 

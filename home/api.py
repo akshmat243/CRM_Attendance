@@ -62,7 +62,7 @@ from django.utils.timezone import get_current_timezone
 from rest_framework.permissions import BasePermission
 from django.apps import apps
 from accounts import models
-from accounts.models import Leave, Profile, Holiday
+from accounts.models import Leave, Profile, Holiday, UserLocation
 from django.db.models import Avg
 
 
@@ -9231,4 +9231,81 @@ def department_members(request):
             "total": members.count()
         },
         "members": result
+    })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def attendance_activities(request):
+    user = request.user
+
+    days = int(request.GET.get("days", 7))
+    start_date = timezone.now().date() - timedelta(days=days)
+
+    attendances = (
+        Attendance.objects
+        .filter(user=user, date__gte=start_date)
+        .order_by('-date')
+    )
+
+    activities = []
+
+    for att in attendances:
+        # -----------------------
+        # CHECK-IN ACTIVITY
+        # -----------------------
+        if att.check_in:
+            check_in_dt = datetime.combine(att.date, att.check_in)
+
+            location = (
+                UserLocation.objects
+                .filter(user=user, created_at__lte=check_in_dt)
+                .order_by('-created_at')
+                .first()
+            )
+
+            activities.append({
+                "type": "check_in",
+                "label": "Checked In",
+                "time": att.check_in.strftime("%I:%M %p"),
+                "timestamp": check_in_dt,
+                "location": location.location_name if location else None
+            })
+
+        # -----------------------
+        # CHECK-OUT ACTIVITY
+        # -----------------------
+        if att.check_out:
+            check_out_dt = datetime.combine(att.date, att.check_out)
+
+            location = (
+                UserLocation.objects
+                .filter(user=user, created_at__lte=check_out_dt)
+                .order_by('-created_at')
+                .first()
+            )
+
+            activities.append({
+                "type": "check_out",
+                "label": "Checked Out",
+                "time": att.check_out.strftime("%I:%M %p"),
+                "timestamp": check_out_dt,
+                "location": location.location_name if location else None
+            })
+
+    # -----------------------
+    # SORT BY TIME DESC
+    # -----------------------
+    activities.sort(
+        key=lambda x: x["timestamp"],
+        reverse=True
+    )
+
+    # remove timestamp before sending response
+    for act in activities:
+        act.pop("timestamp")
+
+    return Response({
+        "count": len(activities),
+        "results": activities
     })
