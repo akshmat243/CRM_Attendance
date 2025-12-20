@@ -15,14 +15,14 @@ urlpatterns = [
     path("attendance/recent-history/", views.recent_attendance_history, name="Recent-history"),
     path("location/reject/", views.reject_user_location, name="Location_Reject"),
     path("location/approve/", views.approve_user_location, name="Location_Approve"),
-   
+    path("profile/overview/<int:user_id>/", profile_overview, name="profile_overview"),
+    path("profile/update/",profile_update,name="profile_update"),
+
 
     path('get-location/', views.get_location, name="get-location"),
     path('see-location/', views.see_location, name="see_location"),
     path("attendance/tracker/", attendance_tracker, name="attendance_tracker"),
 
-
-    path("profile/leave-balance/", profile_leave_balance, name="Leave_Balance"),
 
 
 

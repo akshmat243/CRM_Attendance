@@ -62,7 +62,7 @@ from django.utils.timezone import get_current_timezone
 from rest_framework.permissions import BasePermission
 from django.apps import apps
 from accounts import models
-from accounts.models import Leave
+from accounts.models import Leave, Profile
 from django.db.models import Avg
 
 
@@ -8840,33 +8840,150 @@ def calculate_used_leaves(user):
     return used
 
 
+def calculate_leave_balance(user):
+    used = {"Sick": 0, "Casual": 0}
+
+    leaves = Leave.objects.filter(
+        user=user,
+        status="Approved"
+    )
+
+    for leave in leaves:
+        days = (leave.end_date - leave.start_date).days + 1
+        if leave.leave_type in used:
+            used[leave.leave_type] += days
+
+    return {
+        "sick": {
+            "used": used["Sick"],
+            "total": LEAVE_LIMITS["Sick"]
+        },
+        "casual": {
+            "used": used["Casual"],
+            "total": LEAVE_LIMITS["Casual"]
+        },
+        "total": {
+            "used": used["Sick"] + used["Casual"],
+            "total": LEAVE_LIMITS["Sick"] + LEAVE_LIMITS["Casual"]
+        }
+    }
+
+def can_view_profile(request_user, target_user):
+    # Superuser / Admin → full access
+    if request_user.is_superuser or request_user.role == "admin":
+        return True
+
+    # Staff → only self
+    if request_user.role == "staff":
+        return request_user == target_user
+
+    # Team leader → self + own staff
+    if request_user.role == "team_leader":
+        return Staff.objects.filter(
+            user=target_user,
+            team_leader__user=request_user
+        ).exists() or request_user == target_user
+
+    return False
+
+
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-def profile_leave_balance(request):
-    user = request.user
+def profile_overview(request, user_id):
+    target_user = get_object_or_404(User, id=user_id)
 
-    used = calculate_used_leaves(user)
+    # -----------------------------
+    # Permission rules
+    # -----------------------------
+    if request.user.role == "staff" and request.user != target_user:
+        return Response(
+            {"error": "Permission denied"},
+            status=status.HTTP_403_FORBIDDEN
+        )
 
-    sick_used = used["Sick"]
-    casual_used = used["Casual"]
+    if request.user.role == "team_leader":
+        is_team_member = Staff.objects.filter(
+            user=target_user,
+            team_leader__user=request.user
+        ).exists()
+        if request.user != target_user and not is_team_member:
+            return Response(
+                {"error": "Permission denied"},
+                status=status.HTTP_403_FORBIDDEN
+            )
 
-    sick_total = LEAVE_LIMITS["Sick"]
-    casual_total = LEAVE_LIMITS["Casual"]
+    # Admin & superuser → full access
 
-    total_used = sick_used + casual_used
-    total_allowed = sick_total + casual_total
+    profile = get_object_or_404(Profile, user=target_user)
+
+    # -----------------------------
+    # Leave balance calculation
+    # -----------------------------
+    leave_balance = calculate_leave_balance(target_user)
 
     return Response({
-        "total_leaves": {
-            "used": total_used,
-            "total": total_allowed
+        "user": {
+            "id": target_user.id,
+            "username": target_user.username,
+            "role": target_user.role,
+            "profile_image": (
+                target_user.profile_image.url
+                if target_user.profile_image else None
+            )
         },
-        "sick_leave": {
-            "used": sick_used,
-            "total": sick_total
+        "contact_info": {
+            "full_name": profile.full_name,
+            "email": profile.email or target_user.email,
+            "phone": profile.phone,
+            "department": profile.department,
+            "designation": profile.designation,
+            "join_date": profile.join_date,
+            "reports_to": profile.reports_to,
+            "address": profile.address
         },
-        "casual_leave": {
-            "used": casual_used,
-            "total": casual_total
-        }
-    })
+        "skills_education": {
+            "education": profile.education,
+            "skills": profile.skill_list()
+        },
+        "leave_balance": leave_balance
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def profile_update(request):
+    """
+    Update contact info / skills / education
+    for the LOGGED-IN USER only
+    """
+    user = request.user
+    profile = get_object_or_404(Profile, user=user)
+
+    # -------------------------
+    # Allowed fields only
+    # -------------------------
+    allowed_fields = [
+        "full_name",
+        "phone",
+        "address",
+        "education",
+        "skills",
+    ]
+
+    for field in allowed_fields:
+        if field in request.data:
+            value = request.data.get(field)
+
+            # skills may come as list from frontend
+            if field == "skills" and isinstance(value, list):
+                value = ", ".join(value)
+
+            setattr(profile, field, value)
+
+    profile.save()
+
+    return Response(
+        {"message": "Profile updated successfully"},
+        status=status.HTTP_200_OK
+    )
