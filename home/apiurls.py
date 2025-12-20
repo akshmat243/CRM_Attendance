@@ -16,7 +16,11 @@ urlpatterns = [
     path("location/reject/", views.reject_user_location, name="Location_Reject"),
     path("location/approve/", views.approve_user_location, name="Location_Approve"),
     path("profile/overview/<int:user_id>/", profile_overview, name="profile_overview"),
-    path("profile/update/",profile_update,name="profile_update"),
+    path("profile/update/", profile_update, name="profile_update"),
+    path("attendance/calendar/",attendance_calendar,name="attendance_calendar"),
+    path("profile/reporting-to/", reporting_to, name="Reporting_To"),
+    path("profile/department-members/", department_members, name="Department_Members"),
+
 
 
     path('get-location/', views.get_location, name="get-location"),
