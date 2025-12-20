@@ -8892,67 +8892,49 @@ def can_view_profile(request_user, target_user):
     return False
 
 
+from django.shortcuts import get_object_or_404
 
-@api_view(['GET'])
+@api_view(["GET"])
 @permission_classes([IsAuthenticated])
-def profile_overview(request, user_id):
-    target_user = get_object_or_404(User, id=user_id)
+def profile_overview(request, staff_id):
+    # 1️⃣ Get Staff
+    staff = get_object_or_404(Staff, staff_id=staff_id)
 
-    # -----------------------------
-    # Permission rules
-    # -----------------------------
-    if request.user.role == "staff" and request.user != target_user:
-        return Response(
-            {"error": "Permission denied"},
-            status=status.HTTP_403_FORBIDDEN
-        )
+    # 2️⃣ Get linked user
+    user = staff.user
 
-    if request.user.role == "team_leader":
-        is_team_member = Staff.objects.filter(
-            user=target_user,
-            team_leader__user=request.user
-        ).exists()
-        if request.user != target_user and not is_team_member:
-            return Response(
-                {"error": "Permission denied"},
-                status=status.HTTP_403_FORBIDDEN
-            )
+    # 3️⃣ Profile (OneToOne)
+    profile = user.profile
 
-    # Admin & superuser → full access
-
-    profile = get_object_or_404(Profile, user=target_user)
-
-    # -----------------------------
-    # Leave balance calculation
-    # -----------------------------
-    leave_balance = calculate_leave_balance(target_user)
-
+    # 4️⃣ Build response
     return Response({
         "user": {
-            "id": target_user.id,
-            "username": target_user.username,
-            "role": target_user.role,
-            "profile_image": (
-                target_user.profile_image.url
-                if target_user.profile_image else None
-            )
+            "id": user.id,
+            "username": user.username,
+            "role": user.role,
+            "profile_image": user.profile_image.url if user.profile_image else None,
         },
+
         "contact_info": {
             "full_name": profile.full_name,
-            "email": profile.email or target_user.email,
+            "email": user.email,              # 🔥 use User.email, NOT Profile.email
             "phone": profile.phone,
             "department": profile.department,
             "designation": profile.designation,
             "join_date": profile.join_date,
             "reports_to": profile.reports_to,
-            "address": profile.address
+            "address": profile.address,
         },
+
         "skills_education": {
             "education": profile.education,
-            "skills": profile.skill_list()
+            "skills": profile.skill_list(),
         },
-        "leave_balance": leave_balance
-    }, status=status.HTTP_200_OK)
+    })
+
+
+
+
 
 
 @api_view(['PATCH'])
@@ -9243,31 +9225,26 @@ def department_members(request):
 @permission_classes([IsAuthenticated])
 def attendance_activities(request):
     user = request.user
-
     days = int(request.GET.get("days", 7))
-    start_date = timezone.now().date() - timedelta(days=days)
+
+    end_date = timezone.now().date()
+    start_date = end_date - timedelta(days=days)
 
     attendances = (
         Attendance.objects
-        .filter(user=user, date__gte=start_date)
+        .filter(user=user, date__range=(start_date, end_date))
         .order_by('-date')
     )
 
     activities = []
 
     for att in attendances:
-        # -----------------------
-        # CHECK-IN ACTIVITY
-        # -----------------------
         if att.check_in:
             check_in_dt = datetime.combine(att.date, att.check_in)
-
-            location = (
-                UserLocation.objects
-                .filter(user=user, created_at__lte=check_in_dt)
-                .order_by('-created_at')
-                .first()
-            )
+            location = UserLocation.objects.filter(
+                user=user,
+                created_at__lte=check_in_dt
+            ).order_by('-created_at').first()
 
             activities.append({
                 "type": "check_in",
@@ -9277,18 +9254,12 @@ def attendance_activities(request):
                 "location": location.location_name if location else None
             })
 
-        # -----------------------
-        # CHECK-OUT ACTIVITY
-        # -----------------------
         if att.check_out:
             check_out_dt = datetime.combine(att.date, att.check_out)
-
-            location = (
-                UserLocation.objects
-                .filter(user=user, created_at__lte=check_out_dt)
-                .order_by('-created_at')
-                .first()
-            )
+            location = UserLocation.objects.filter(
+                user=user,
+                created_at__lte=check_out_dt
+            ).order_by('-created_at').first()
 
             activities.append({
                 "type": "check_out",
@@ -9298,17 +9269,9 @@ def attendance_activities(request):
                 "location": location.location_name if location else None
             })
 
-    # -----------------------
-    # SORT BY TIME DESC
-    # -----------------------
-    activities.sort(
-        key=lambda x: x["timestamp"],
-        reverse=True
-    )
-
-    # remove timestamp before sending response
-    for act in activities:
-        act.pop("timestamp")
+    activities.sort(key=lambda x: x["timestamp"], reverse=True)
+    for a in activities:
+        a.pop("timestamp")
 
     return Response({
         "count": len(activities),
