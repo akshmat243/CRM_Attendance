@@ -8891,49 +8891,83 @@ def can_view_profile(request_user, target_user):
 
     return False
 
-
-from django.shortcuts import get_object_or_404
-
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def profile_overview(request, staff_id):
-    # 1️⃣ Get Staff
+    # -------------------------------------------------
+    # 1. Staff → User → Profile
+    # -------------------------------------------------
     staff = get_object_or_404(Staff, staff_id=staff_id)
-
-    # 2️⃣ Get linked user
     user = staff.user
-
-    # 3️⃣ Profile (OneToOne)
     profile = user.profile
 
-    # 4️⃣ Build response
+    # -------------------------------------------------
+    # 2. LEAVE CALCULATION
+    # -------------------------------------------------
+    YEAR = date.today().year
+
+    TOTAL_SICK = 12
+    TOTAL_CASUAL = 12
+
+    sick_used = Leave.objects.filter(
+        user=user,
+        leave_type="Sick",
+        status="Approved",
+        start_date__year=YEAR
+    ).count()
+
+    casual_used = Leave.objects.filter(
+        user=user,
+        leave_type="Casual",
+        status="Approved",
+        start_date__year=YEAR
+    ).count()
+
+    total_used = sick_used + casual_used
+
+    # -------------------------------------------------
+    # 3. RESPONSE
+    # -------------------------------------------------
     return Response({
         "user": {
             "id": user.id,
             "username": user.username,
             "role": user.role,
-            "profile_image": user.profile_image.url if user.profile_image else None,
+            "profile_image": user.profile_image.url if user.profile_image else None
         },
 
         "contact_info": {
             "full_name": profile.full_name,
-            "email": user.email,              # 🔥 use User.email, NOT Profile.email
+            "email": user.email,   # ✅ Always from User
             "phone": profile.phone,
             "department": profile.department,
             "designation": profile.designation,
             "join_date": profile.join_date,
             "reports_to": profile.reports_to,
-            "address": profile.address,
+            "address": profile.address
         },
 
         "skills_education": {
             "education": profile.education,
-            "skills": profile.skill_list(),
+            "skills": profile.skill_list()
         },
+
+        # ✅ NEW BLOCK
+        "leave_status": {
+            "sick": {
+                "used": sick_used,
+                "total": TOTAL_SICK
+            },
+            "casual": {
+                "used": casual_used,
+                "total": TOTAL_CASUAL
+            },
+            "total": {
+                "used": total_used,
+                "total": TOTAL_SICK + TOTAL_CASUAL
+            }
+        }
     })
-
-
-
 
 
 
