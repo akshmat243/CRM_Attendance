@@ -15,6 +15,7 @@ import shortuuid
 import re
 from datetime import time
 import requests
+from django.utils import timezone
 
 
 # ----------------------------------------------------------------------
@@ -182,16 +183,23 @@ class Profile(models.Model):
 # ----------------------------------------------------------------------
 # Attendance
 # ----------------------------------------------------------------------
+
+
 class Attendance(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='accounts_attendance')
-    date = models.DateField(default=date.today)
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="accounts_attendance"
+    )
+
+    date = models.DateField(default=timezone.now)
+
     check_in = models.TimeField(null=True, blank=True)
     check_out = models.TimeField(null=True, blank=True)
+
     uid = models.CharField(max_length=20, unique=True, blank=True, null=True)
 
     working_hours = models.DurationField(null=True, blank=True)
-
-    # ✅ ADD THIS
     late_minutes = models.PositiveIntegerField(default=0)
 
     status = models.CharField(
@@ -206,29 +214,28 @@ class Attendance(models.Model):
     )
 
     class Meta:
-        unique_together = ('user', 'date')
-
-
-    # ------------------------------------------------------------------
-    # AUTO-CALCULATE ON SAVE
-    # ------------------------------------------------------------------
-    
+        unique_together = ("user", "date")
 
     def save(self, *args, **kwargs):
         if not self.uid:
             self.uid = generate_uid("A")
 
+        # ------------------------
+        # Late calculation
+        # ------------------------
         if self.check_in:
-            # LATE CALCULATION
             OFFICE_START_TIME = time(9, 0)
             office_dt = datetime.combine(self.date, OFFICE_START_TIME)
             checkin_dt = datetime.combine(self.date, self.check_in)
 
-            if checkin_dt > office_dt:
-                self.late_minutes = int((checkin_dt - office_dt).total_seconds() / 60)
-            else:
-                self.late_minutes = 0
+            self.late_minutes = (
+                int((checkin_dt - office_dt).total_seconds() / 60)
+                if checkin_dt > office_dt else 0
+            )
 
+        # ------------------------
+        # Working hours & status
+        # ------------------------
         if self.check_in and self.check_out:
             check_in_dt = datetime.combine(self.date, self.check_in)
             check_out_dt = datetime.combine(self.date, self.check_out)
@@ -249,8 +256,6 @@ class Attendance(models.Model):
             self.status = "Absent"
 
         super().save(*args, **kwargs)
-
-
 
 # ----------------------------------------------------------------------
 # Leave

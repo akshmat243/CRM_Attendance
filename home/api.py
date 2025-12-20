@@ -197,7 +197,6 @@ class MarketingAccessPermission(BasePermission):
 #             res['data'] = []
 #             return Response(res, status=status.HTTP_400_BAD_REQUEST)
 
-
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def attendance_tracker(request):
@@ -216,7 +215,6 @@ def attendance_tracker(request):
     )
 
     present_days = qs.filter(status='Present').count()
-
     late_arrivals = qs.filter(late_minutes__gt=0).count()
 
     avg_working = qs.exclude(
@@ -227,18 +225,25 @@ def attendance_tracker(request):
     if avg_working:
         avg_hours = round(avg_working.total_seconds() / 3600, 2)
 
-    # ABSENT CALCULATION
+    # -------------------------------------------------
+    # ABSENT CALCULATION (FIXED)
+    # -------------------------------------------------
     total_days = monthrange(year, month)[1]
+
     holidays = models.Holiday.objects.filter(
         date__year=year,
         date__month=month
     ).count()
 
+    from datetime import date
+    month_start = date(year, month, 1)
+    month_end = date(year, month, monthrange(year, month)[1])
+
     approved_leaves = models.Leave.objects.filter(
         user=user,
-        date__year=year,
-        date__month=month,
-        status='Approved'
+        status='Approved',
+        start_date__lte=month_end,
+        end_date__gte=month_start
     ).count()
 
     working_days = total_days - holidays - approved_leaves
