@@ -638,17 +638,69 @@ def update_leave_status(request, leave_id):
     return Response({"message": "Updated", "status": status_val})
 
 
+
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def create_holiday(request):
-    if not request.user.is_superuser and request.user.role != "admin":
-        return Response({"error": "Admin only"}, status=403)
+    user = request.user
 
-    serializer = HolidaySerializer(data=request.data)
-    if serializer.is_valid():
-        serializer.save()
-        return Response({"message": "Holiday added"})
-    return Response(serializer.errors, status=400)
+    if not (user.is_superuser or user.role == "admin"):
+        return Response(
+            {"error": "Admin only"},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    date_val = request.data.get("date")
+    name = request.data.get("name")
+
+    if not date_val or not name:
+        return Response(
+            {"error": "date and name are required"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    if Holiday.objects.filter(date=date_val).exists():
+        return Response(
+            {"error": "Holiday already exists for this date"},
+            status=status.HTTP_409_CONFLICT
+        )
+
+    holiday = Holiday.objects.create(
+        date=date_val,
+        name=name
+    )
+
+    return Response({
+        "message": "Holiday added successfully",
+        "holiday": {
+            "id": holiday.id,
+            "date": holiday.date,
+            "name": holiday.name
+        }
+    }, status=status.HTTP_201_CREATED)
+
+
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def list_holidays(request):
+    holidays = Holiday.objects.all().order_by('date')
+
+    data = [
+        {
+            "id": h.id,
+            "date": h.date,
+            "name": h.name
+        }
+        for h in holidays
+    ]
+
+    return Response({
+        "count": len(data),
+        "results": data
+    })
 
 
 # ————————————————————————————————————————
