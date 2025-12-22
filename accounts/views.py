@@ -1111,6 +1111,18 @@ def calculate_leave_balance(user):
         }
     }
 
+
+def format_duration(duration):
+    if not duration:
+        return None
+
+    total_seconds = int(duration.total_seconds())
+    hours = total_seconds // 3600
+    minutes = (total_seconds % 3600) // 60
+
+    return f"{hours:02d}:{minutes:02d}"
+
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def attendance_calendar(request):
@@ -1155,6 +1167,8 @@ def attendance_calendar(request):
     holiday_dates = {h.date: h.name for h in holidays}
 
     calendar = []
+
+    
 
     for day in range(1, end_date.day + 1):
         current_date = date(year, month_num, day)
@@ -1204,7 +1218,8 @@ def attendance_calendar(request):
             "status": status_label,
             "check_in": check_in.strftime("%H:%M") if check_in else None,
             "check_out": check_out.strftime("%H:%M") if check_out else None,
-            "working_hours": str(working_hours) if working_hours else None
+            "working_hours": format_duration(working_hours)
+
         })
 
     return Response({
