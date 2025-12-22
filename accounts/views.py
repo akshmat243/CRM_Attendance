@@ -1111,7 +1111,6 @@ def calculate_leave_balance(user):
         }
     }
 
-
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def attendance_calendar(request):
@@ -1164,86 +1163,55 @@ def attendance_calendar(request):
         # FUTURE
         # -----------------------------
         if current_date > today:
-            calendar.append({
-                "date": current_date,
-                "day": day,
-                "weekday": current_date.strftime("%a"),
-                "status": "Future",
-                "check_in": None,
-                "check_out": None,
-                "working_hours": None
-            })
-            continue
+            status_label = "Future"
+            check_in = check_out = working_hours = None
 
         # -----------------------------
-        # ATTENDANCE (TOP PRIORITY)
+        # ATTENDANCE (USE DB STATUS ✅)
         # -----------------------------
-        if current_date in attendance_map:
+        elif current_date in attendance_map:
             att = attendance_map[current_date]
-
-            status_label = (
-                "Present" if att.check_in and att.check_out
-                else "Checked In"
-            )
-
-            calendar.append({
-                "date": current_date,
-                "day": day,
-                "weekday": current_date.strftime("%a"),
-                "status": status_label,
-                "check_in": att.check_in.strftime("%H:%M:%S") if att.check_in else None,
-                "check_out": att.check_out.strftime("%H:%M:%S") if att.check_out else None,
-                "working_hours": str(att.working_hours) if att.working_hours else None
-            })
-            continue
+            status_label = att.status
+            check_in = att.check_in
+            check_out = att.check_out
+            working_hours = att.working_hours
 
         # -----------------------------
         # LEAVE
         # -----------------------------
-        if current_date in leave_dates:
-            calendar.append({
-                "date": current_date,
-                "day": day,
-                "weekday": current_date.strftime("%a"),
-                "status": "Leave",
-                "check_in": None,
-                "check_out": None,
-                "working_hours": None
-            })
-            continue
+        elif current_date in leave_dates:
+            status_label = "Leave"
+            check_in = check_out = working_hours = None
 
         # -----------------------------
         # HOLIDAY
         # -----------------------------
-        if current_date in holiday_dates:
-            calendar.append({
-                "date": current_date,
-                "day": day,
-                "weekday": current_date.strftime("%a"),
-                "status": "Holiday",
-                "check_in": None,
-                "check_out": None,
-                "working_hours": None
-            })
-            continue
+        elif current_date in holiday_dates:
+            status_label = "Holiday"
+            check_in = check_out = working_hours = None
 
         # -----------------------------
         # DEFAULT
         # -----------------------------
+        else:
+            status_label = "Absent"
+            check_in = check_out = working_hours = None
+
         calendar.append({
             "date": current_date,
-            "day": day,
+            "day": current_date.day,
             "weekday": current_date.strftime("%a"),
-            "status": "Absent",
-            "check_in": None,
-            "check_out": None,
-            "working_hours": None
+            "status": status_label,
+            "check_in": check_in.strftime("%H:%M:%S") if check_in else None,
+            "check_out": check_out.strftime("%H:%M:%S") if check_out else None,
+            "working_hours": str(working_hours) if working_hours else None
         })
 
     return Response({
         "month": f"{year}-{month_num:02d}",
         "calendar": calendar
     })
+
 
 
 @api_view(['GET'])
