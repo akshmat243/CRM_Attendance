@@ -192,7 +192,7 @@ class Attendance(models.Model):
         related_name="accounts_attendance"
     )
 
-    date = models.DateField(default=timezone.now)
+    date = models.DateField(default=timezone.localdate)
 
     check_in = models.TimeField(null=True, blank=True)
     check_out = models.TimeField(null=True, blank=True)

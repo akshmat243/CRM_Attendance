@@ -197,64 +197,6 @@ class MarketingAccessPermission(BasePermission):
 #             res['data'] = []
 #             return Response(res, status=status.HTTP_400_BAD_REQUEST)
 
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def attendance_tracker(request):
-    user = request.user
-    month = request.GET.get('month')  # YYYY-MM
-
-    if not month:
-        return Response({"error": "month=YYYY-MM required"}, status=400)
-
-    year, month = map(int, month.split('-'))
-
-    qs = models.Attendance.objects.filter(
-        user=user,
-        date__year=year,
-        date__month=month
-    )
-
-    present_days = qs.filter(status='Present').count()
-    late_arrivals = qs.filter(late_minutes__gt=0).count()
-
-    avg_working = qs.exclude(
-        working_hours__isnull=True
-    ).aggregate(avg=Avg('working_hours'))['avg']
-
-    avg_hours = 0
-    if avg_working:
-        avg_hours = round(avg_working.total_seconds() / 3600, 2)
-
-    # -------------------------------------------------
-    # ABSENT CALCULATION (FIXED)
-    # -------------------------------------------------
-    total_days = monthrange(year, month)[1]
-
-    holidays = models.Holiday.objects.filter(
-        date__year=year,
-        date__month=month
-    ).count()
-
-    from datetime import date
-    month_start = date(year, month, 1)
-    month_end = date(year, month, monthrange(year, month)[1])
-
-    approved_leaves = models.Leave.objects.filter(
-        user=user,
-        status='Approved',
-        start_date__lte=month_end,
-        end_date__gte=month_start
-    ).count()
-
-    working_days = total_days - holidays - approved_leaves
-    absent_days = max(working_days - present_days, 0)
-
-    return Response({
-        "present_days": present_days,
-        "absent_days": absent_days,
-        "late_arrivals": late_arrivals,
-        "avg_working_hours": avg_hours
-    })
 
 
 
@@ -8821,57 +8763,134 @@ class TodayInterestedCountAPIView(APIView):
 
         return Response(data)
 
-LEAVE_LIMITS = {
-    "Sick": 12,
-    "Casual": 12,
-}
 
-def calculate_used_leaves(user):
-    leaves = Leave.objects.filter(
-        user=user,
-        status="Approved"
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def department_members(request):
+    user = request.user
+
+    # ---------------------------
+    # STAFF VIEW
+    # ---------------------------
+    if user.role == "staff":
+        staff = Staff.objects.filter(user=user).first()
+        if not staff or not staff.team_leader:
+            return Response(
+                {"members": []},
+                status=status.HTTP_200_OK
+            )
+
+        team_leader = staff.team_leader
+
+    # ---------------------------
+    # TEAM LEADER VIEW
+    # ---------------------------
+    elif user.role == "team_leader":
+        team_leader = Team_Leader.objects.filter(user=user).first()
+        if not team_leader:
+            return Response(
+                {"members": []},
+                status=status.HTTP_200_OK
+            )
+
+    # ---------------------------
+    # ADMIN / SUPER USER
+    # ---------------------------
+    else:
+        return Response(
+            {"members": []},
+            status=status.HTTP_200_OK
+        )
+
+    members = Staff.objects.filter(team_leader=team_leader).select_related("user")
+
+    present = 0
+    result = []
+
+    for member in members:
+        status_today = today_attendance_status(member.user)
+        if status_today in ["Present", "Checked In"]:
+            present += 1
+
+        result.append({
+            "name": member.name or member.user.username,
+            "status": status_today,
+            "profile_image": (
+                member.user.profile_image.url
+                if member.user.profile_image else None
+            )
+        })
+
+    department = member.user.profile.department if member.user.profile else None
+
+    return Response({
+        "department": department,
+        "summary": {
+            "present": present,
+            "total": members.count()
+        },
+        "members": result
+    })
+
+def today_attendance_status(user):
+    today = timezone.localtime(timezone.now()).date()
+
+    att = Attendance.objects.filter(user=user, date=today).first()
+
+    if not att:
+        return "Yet to check-in"
+
+    if att.check_in and att.check_out:
+        return "Present"
+
+    if att.check_in and not att.check_out:
+        return "Checked In"
+
+    return "Yet to check-in"
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def reporting_to(request):
+    user = request.user
+
+    # ---------------------------
+    # STAFF USER
+    # ---------------------------
+    if user.role == "staff":
+        staff = Staff.objects.filter(user=user).first()
+        if not staff or not staff.team_leader:
+            return Response(
+                {"reporting_to": None},
+                status=status.HTTP_200_OK
+            )
+
+        leader = staff.team_leader
+        leader_user = leader.user
+
+        return Response({
+            "reporting_to": {
+                "name": leader.name or leader_user.username,
+                "designation": "Team Leader",
+                "status": today_attendance_status(leader_user),
+                "profile_image": (
+                    leader_user.profile_image.url
+                    if leader_user.profile_image else None
+                )
+            }
+        })
+
+    # ---------------------------
+    # TEAM LEADER / ADMIN
+    # ---------------------------
+    return Response(
+        {"reporting_to": None},
+        status=status.HTTP_200_OK
     )
 
-    used = {
-        "Sick": 0,
-        "Casual": 0,
-    }
 
-    for leave in leaves:
-        days = (leave.end_date - leave.start_date).days + 1
-        if leave.leave_type in used:
-            used[leave.leave_type] += days
-
-    return used
-
-
-def calculate_leave_balance(user):
-    used = {"Sick": 0, "Casual": 0}
-
-    leaves = Leave.objects.filter(
-        user=user,
-        status="Approved"
-    )
-
-    for leave in leaves:
-        days = (leave.end_date - leave.start_date).days + 1
-        if leave.leave_type in used:
-            used[leave.leave_type] += days
-
-    return {
-        "sick": {
-            "used": used["Sick"],
-            "total": LEAVE_LIMITS["Sick"]
-        },
-        "casual": {
-            "used": used["Casual"],
-            "total": LEAVE_LIMITS["Casual"]
-        },
-        "total": {
-            "used": used["Sick"] + used["Casual"],
-            "total": LEAVE_LIMITS["Sick"] + LEAVE_LIMITS["Casual"]
-        }
-    }
 
 def can_view_profile(request_user, target_user):
     # Superuser / Admin → full access
@@ -9008,306 +9027,3 @@ def profile_update(request):
         {"message": "Profile updated successfully"},
         status=status.HTTP_200_OK
     )
-
-
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def attendance_calendar(request):
-    """
-    Monthly attendance calendar for logged-in user
-    """
-    user = request.user
-    month = request.GET.get("month")  # YYYY-MM
-
-    if not month:
-        return Response(
-            {"error": "month=YYYY-MM is required"},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-
-    try:
-        year, month_num = map(int, month.split("-"))
-    except ValueError:
-        return Response(
-            {"error": "Invalid month format"},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-
-    # -------------------------------------------------
-    # Date range
-    # -------------------------------------------------
-    total_days = monthrange(year, month_num)[1]
-    start_date = date(year, month_num, 1)
-    end_date = date(year, month_num, total_days)
-
-    # -------------------------------------------------
-    # Prefetch data
-    # -------------------------------------------------
-    attendances = Attendance.objects.filter(
-        user=user,
-        date__range=(start_date, end_date)
-    )
-
-    attendance_map = {a.date: a for a in attendances}
-
-    holidays = Holiday.objects.filter(
-        date__range=(start_date, end_date)
-    )
-    holiday_dates = {h.date: h.name for h in holidays}
-
-    approved_leaves = Leave.objects.filter(
-        user=user,
-        status="Approved",
-        start_date__lte=end_date,
-        end_date__gte=start_date
-    )
-
-    leave_dates = set()
-    for leave in approved_leaves:
-        current = leave.start_date
-        while current <= leave.end_date:
-            leave_dates.add(current)
-            current += timedelta(days=1)
-
-    # -------------------------------------------------
-    # Build calendar response
-    # -------------------------------------------------
-    calendar = []
-
-    for day in range(1, total_days + 1):
-        current_date = date(year, month_num, day)
-        weekday = current_date.weekday()  # 5,6 = weekend
-
-        # Default
-        status_label = "Absent"
-        check_in = None
-        check_out = None
-        working_hours = None
-
-        # Holiday
-        if current_date in holiday_dates:
-            status_label = "Holiday"
-
-        # Weekend
-        elif weekday >= 5:
-            status_label = "Weekend"
-
-        # Attendance
-        elif current_date in attendance_map:
-            att = attendance_map[current_date]
-            check_in = att.check_in
-            check_out = att.check_out
-            working_hours = att.working_hours
-
-            if att.check_in and att.check_out:
-                status_label = "Present"
-            elif att.check_in and not att.check_out:
-                status_label = "Late"
-
-        # Approved Leave
-        elif current_date in leave_dates:
-            status_label = "Absent"
-
-        calendar.append({
-            "date": current_date,
-            "day": current_date.day,
-            "weekday": current_date.strftime("%a"),
-            "status": status_label,
-            "check_in": check_in,
-            "check_out": check_out,
-            "working_hours": working_hours
-        })
-
-    return Response({
-        "month": f"{year}-{month_num:02d}",
-        "calendar": calendar
-    }, status=status.HTTP_200_OK)
-
-
-def today_attendance_status(user):
-    today = timezone.localtime(timezone.now()).date()
-
-    att = Attendance.objects.filter(user=user, date=today).first()
-
-    if not att:
-        return "Yet to check-in"
-
-    if att.check_in and att.check_out:
-        return "Present"
-
-    if att.check_in and not att.check_out:
-        return "Checked In"
-
-    return "Yet to check-in"
-
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def reporting_to(request):
-    user = request.user
-
-    # ---------------------------
-    # STAFF USER
-    # ---------------------------
-    if user.role == "staff":
-        staff = Staff.objects.filter(user=user).first()
-        if not staff or not staff.team_leader:
-            return Response(
-                {"reporting_to": None},
-                status=status.HTTP_200_OK
-            )
-
-        leader = staff.team_leader
-        leader_user = leader.user
-
-        return Response({
-            "reporting_to": {
-                "name": leader.name or leader_user.username,
-                "designation": "Team Leader",
-                "status": today_attendance_status(leader_user),
-                "profile_image": (
-                    leader_user.profile_image.url
-                    if leader_user.profile_image else None
-                )
-            }
-        })
-
-    # ---------------------------
-    # TEAM LEADER / ADMIN
-    # ---------------------------
-    return Response(
-        {"reporting_to": None},
-        status=status.HTTP_200_OK
-    )
-
-
-
-
-
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def department_members(request):
-    user = request.user
-
-    # ---------------------------
-    # STAFF VIEW
-    # ---------------------------
-    if user.role == "staff":
-        staff = Staff.objects.filter(user=user).first()
-        if not staff or not staff.team_leader:
-            return Response(
-                {"members": []},
-                status=status.HTTP_200_OK
-            )
-
-        team_leader = staff.team_leader
-
-    # ---------------------------
-    # TEAM LEADER VIEW
-    # ---------------------------
-    elif user.role == "team_leader":
-        team_leader = Team_Leader.objects.filter(user=user).first()
-        if not team_leader:
-            return Response(
-                {"members": []},
-                status=status.HTTP_200_OK
-            )
-
-    # ---------------------------
-    # ADMIN / SUPER USER
-    # ---------------------------
-    else:
-        return Response(
-            {"members": []},
-            status=status.HTTP_200_OK
-        )
-
-    members = Staff.objects.filter(team_leader=team_leader).select_related("user")
-
-    present = 0
-    result = []
-
-    for member in members:
-        status_today = today_attendance_status(member.user)
-        if status_today in ["Present", "Checked In"]:
-            present += 1
-
-        result.append({
-            "name": member.name or member.user.username,
-            "status": status_today,
-            "profile_image": (
-                member.user.profile_image.url
-                if member.user.profile_image else None
-            )
-        })
-
-    department = member.user.profile.department if member.user.profile else None
-
-    return Response({
-        "department": department,
-        "summary": {
-            "present": present,
-            "total": members.count()
-        },
-        "members": result
-    })
-
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def attendance_activities(request):
-    user = request.user
-    days = int(request.GET.get("days", 7))
-
-    end_date = timezone.now().date()
-    start_date = end_date - timedelta(days=days)
-
-    attendances = (
-        Attendance.objects
-        .filter(user=user, date__range=(start_date, end_date))
-        .order_by('-date')
-    )
-
-    activities = []
-
-    for att in attendances:
-        if att.check_in:
-            check_in_dt = datetime.combine(att.date, att.check_in)
-            location = UserLocation.objects.filter(
-                user=user,
-                created_at__lte=check_in_dt
-            ).order_by('-created_at').first()
-
-            activities.append({
-                "type": "check_in",
-                "label": "Checked In",
-                "time": att.check_in.strftime("%I:%M %p"),
-                "timestamp": check_in_dt,
-                "location": location.location_name if location else None
-            })
-
-        if att.check_out:
-            check_out_dt = datetime.combine(att.date, att.check_out)
-            location = UserLocation.objects.filter(
-                user=user,
-                created_at__lte=check_out_dt
-            ).order_by('-created_at').first()
-
-            activities.append({
-                "type": "check_out",
-                "label": "Checked Out",
-                "time": att.check_out.strftime("%I:%M %p"),
-                "timestamp": check_out_dt,
-                "location": location.location_name if location else None
-            })
-
-    activities.sort(key=lambda x: x["timestamp"], reverse=True)
-    for a in activities:
-        a.pop("timestamp")
-
-    return Response({
-        "count": len(activities),
-        "results": activities
-    })

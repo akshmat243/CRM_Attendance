@@ -15,7 +15,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font
 import csv
 
-from home.api import CustomIsSuperuser, IsCustomAdminUser, IsCustomStaffUser, IsCustomTeamLeaderUser
+from home import api
 from .serializers import UserSerializer
 from .models import Attendance, Profile, Leave, Holiday, Task, WorkLog, AllowedLocation, UserLocation, extract_lat_lng, get_location_name
 from .serializers import (
@@ -943,7 +943,7 @@ def recent_attendance_history(request):
 
 
 @api_view(['POST'])
-@permission_classes([IsAuthenticated , IsCustomTeamLeaderUser, IsCustomAdminUser, IsCustomStaffUser, CustomIsSuperuser])
+@permission_classes([IsAuthenticated , api.IsCustomTeamLeaderUser, api.IsCustomAdminUser, api.IsCustomStaffUser, api.CustomIsSuperuser])
 def approve_user_location(request):
     if not can_approve(request.user):
         return Response(
@@ -983,7 +983,7 @@ def approve_user_location(request):
 
 
 @api_view(['POST'])
-@permission_classes([IsAuthenticated, IsCustomTeamLeaderUser, IsCustomAdminUser, IsCustomStaffUser, CustomIsSuperuser])
+@permission_classes([IsAuthenticated, api.IsCustomTeamLeaderUser, api.IsCustomAdminUser, api.IsCustomStaffUser, api.CustomIsSuperuser])
 def reject_user_location(request):
     if not can_approve(request.user):
         return Response({"error": "Permission denied"}, status=403)
@@ -1001,4 +1001,319 @@ def reject_user_location(request):
     return Response({
         "message": "Location rejected",
         "user": location.user.username
+    })
+
+
+
+
+
+
+
+
+
+LEAVE_LIMITS = {
+    "Sick": 12,
+    "Casual": 12,
+}
+
+def calculate_used_leaves(user):
+    leaves = Leave.objects.filter(
+        user=user,
+        status="Approved"
+    )
+
+    used = {
+        "Sick": 0,
+        "Casual": 0,
+    }
+
+    for leave in leaves:
+        days = (leave.end_date - leave.start_date).days + 1
+        if leave.leave_type in used:
+            used[leave.leave_type] += days
+
+    return used
+
+
+def calculate_leave_balance(user):
+    used = {"Sick": 0, "Casual": 0}
+
+    leaves = Leave.objects.filter(
+        user=user,
+        status="Approved"
+    )
+
+    for leave in leaves:
+        days = (leave.end_date - leave.start_date).days + 1
+        if leave.leave_type in used:
+            used[leave.leave_type] += days
+
+    return {
+        "sick": {
+            "used": used["Sick"],
+            "total": LEAVE_LIMITS["Sick"]
+        },
+        "casual": {
+            "used": used["Casual"],
+            "total": LEAVE_LIMITS["Casual"]
+        },
+        "total": {
+            "used": used["Sick"] + used["Casual"],
+            "total": LEAVE_LIMITS["Sick"] + LEAVE_LIMITS["Casual"]
+        }
+    }
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def attendance_calendar(request):
+    user = request.user
+    month = request.GET.get("month")  # YYYY-MM
+
+    if not month:
+        return Response({"error": "month=YYYY-MM required"}, status=400)
+
+    year, month_num = map(int, month.split("-"))
+
+    start_date = date(year, month_num, 1)
+    end_date = date(year, month_num, monthrange(year, month_num)[1])
+    today = timezone.localdate()
+
+    # -----------------------------
+    # FETCH DATA
+    # -----------------------------
+    attendances = Attendance.objects.filter(
+        user=user,
+        date__range=(start_date, end_date)
+    )
+    attendance_map = {a.date: a for a in attendances}
+
+    approved_leaves = Leave.objects.filter(
+        user=user,
+        status="Approved",
+        start_date__lte=end_date,
+        end_date__gte=start_date
+    )
+
+    leave_dates = set()
+    for leave in approved_leaves:
+        d = leave.start_date
+        while d <= leave.end_date:
+            leave_dates.add(d)
+            d += timedelta(days=1)
+
+    holidays = Holiday.objects.filter(
+        date__range=(start_date, end_date)
+    )
+    holiday_dates = {h.date: h.name for h in holidays}
+
+    calendar = []
+
+    for day in range(1, end_date.day + 1):
+        current_date = date(year, month_num, day)
+
+        # -----------------------------
+        # FUTURE
+        # -----------------------------
+        if current_date > today:
+            calendar.append({
+                "date": current_date,
+                "day": day,
+                "weekday": current_date.strftime("%a"),
+                "status": "Future",
+                "check_in": None,
+                "check_out": None,
+                "working_hours": None
+            })
+            continue
+
+        # -----------------------------
+        # ATTENDANCE (TOP PRIORITY)
+        # -----------------------------
+        if current_date in attendance_map:
+            att = attendance_map[current_date]
+
+            status_label = (
+                "Present" if att.check_in and att.check_out
+                else "Checked In"
+            )
+
+            calendar.append({
+                "date": current_date,
+                "day": day,
+                "weekday": current_date.strftime("%a"),
+                "status": status_label,
+                "check_in": att.check_in.strftime("%H:%M:%S") if att.check_in else None,
+                "check_out": att.check_out.strftime("%H:%M:%S") if att.check_out else None,
+                "working_hours": str(att.working_hours) if att.working_hours else None
+            })
+            continue
+
+        # -----------------------------
+        # LEAVE
+        # -----------------------------
+        if current_date in leave_dates:
+            calendar.append({
+                "date": current_date,
+                "day": day,
+                "weekday": current_date.strftime("%a"),
+                "status": "Leave",
+                "check_in": None,
+                "check_out": None,
+                "working_hours": None
+            })
+            continue
+
+        # -----------------------------
+        # HOLIDAY
+        # -----------------------------
+        if current_date in holiday_dates:
+            calendar.append({
+                "date": current_date,
+                "day": day,
+                "weekday": current_date.strftime("%a"),
+                "status": "Holiday",
+                "check_in": None,
+                "check_out": None,
+                "working_hours": None
+            })
+            continue
+
+        # -----------------------------
+        # DEFAULT
+        # -----------------------------
+        calendar.append({
+            "date": current_date,
+            "day": day,
+            "weekday": current_date.strftime("%a"),
+            "status": "Absent",
+            "check_in": None,
+            "check_out": None,
+            "working_hours": None
+        })
+
+    return Response({
+        "month": f"{year}-{month_num:02d}",
+        "calendar": calendar
+    })
+    
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def attendance_activities(request):
+    user = request.user
+    days = int(request.GET.get("days", 7))
+
+    end_date = timezone.now().date()
+    start_date = end_date - timedelta(days=days)
+
+    attendances = (
+        Attendance.objects
+        .filter(user=user, date__range=(start_date, end_date))
+        .order_by('-date')
+    )
+
+    activities = []
+
+    for att in attendances:
+        if att.check_in:
+            check_in_dt = datetime.combine(att.date, att.check_in)
+            location = UserLocation.objects.filter(
+                user=user,
+                created_at__lte=check_in_dt
+            ).order_by('-created_at').first()
+
+            activities.append({
+                "type": "check_in",
+                "label": "Checked In",
+                "time": att.check_in.strftime("%I:%M %p"),
+                "timestamp": check_in_dt,
+                "location": location.location_name if location else None
+            })
+
+        if att.check_out:
+            check_out_dt = datetime.combine(att.date, att.check_out)
+            location = UserLocation.objects.filter(
+                user=user,
+                created_at__lte=check_out_dt
+            ).order_by('-created_at').first()
+
+            activities.append({
+                "type": "check_out",
+                "label": "Checked Out",
+                "time": att.check_out.strftime("%I:%M %p"),
+                "timestamp": check_out_dt,
+                "location": location.location_name if location else None
+            })
+
+    activities.sort(key=lambda x: x["timestamp"], reverse=True)
+    for a in activities:
+        a.pop("timestamp")
+
+    return Response({
+        "count": len(activities),
+        "results": activities
+    })
+
+
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def attendance_tracker(request):
+    user = request.user
+    month = request.GET.get('month')  # YYYY-MM
+
+    if not month:
+        return Response({"error": "month=YYYY-MM required"}, status=400)
+
+    year, month = map(int, month.split('-'))
+
+    qs = Attendance.objects.filter(
+        user=user,
+        date__year=year,
+        date__month=month
+    )
+
+    present_days = qs.filter(status='Present').count()
+    late_arrivals = qs.filter(late_minutes__gt=0).count()
+
+    avg_working = qs.exclude(
+        working_hours__isnull=True
+    ).aggregate(avg=Avg('working_hours'))['avg']
+
+    avg_hours = 0
+    if avg_working:
+        avg_hours = round(avg_working.total_seconds() / 3600, 2)
+
+    # -------------------------------------------------
+    # ABSENT CALCULATION (FIXED)
+    # -------------------------------------------------
+    total_days = monthrange(year, month)[1]
+
+    holidays = Holiday.objects.filter(
+        date__year=year,
+        date__month=month
+    ).count()
+
+    from datetime import date
+    month_start = date(year, month, 1)
+    month_end = date(year, month, monthrange(year, month)[1])
+
+    approved_leaves = Leave.objects.filter(
+        user=user,
+        status='Approved',
+        start_date__lte=month_end,
+        end_date__gte=month_start
+    ).count()
+
+    working_days = total_days - holidays - approved_leaves
+    absent_days = max(working_days - present_days, 0)
+
+    return Response({
+        "present_days": present_days,
+        "absent_days": absent_days,
+        "late_arrivals": late_arrivals,
+        "avg_working_hours": avg_hours
     })
