@@ -889,13 +889,14 @@ def see_location(request):
         "time": loc.created_at
     })
 
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def recent_attendance_history(request):
     user = request.user
-
     days = int(request.GET.get("days", 7))
-    start_date = timezone.now().date() - timedelta(days=days)
+
+    start_date = timezone.localdate() - timedelta(days=days)
 
     attendances = (
         Attendance.objects
@@ -906,31 +907,25 @@ def recent_attendance_history(request):
     results = []
 
     for att in attendances:
-        check_in_dt = None
+        location = None
+
         if att.check_in:
             check_in_dt = datetime.combine(att.date, att.check_in)
 
-        # get nearest location BEFORE check-in
-        location = None
-        if check_in_dt:
             location = (
                 UserLocation.objects
-                .filter(
-                    user=user,
-                    created_at__lte=check_in_dt
-                )
+                .filter(user=user, created_at__lte=check_in_dt)
                 .order_by('-created_at')
                 .first()
             )
 
         results.append({
             "date": att.date,
-            "check_in": att.check_in,
-            "check_out": att.check_out,
-            "working_hours": att.working_hours,
+            "check_in": att.check_in.strftime("%H:%M:%S") if att.check_in else None,
+            "check_out": att.check_out.strftime("%H:%M:%S") if att.check_out else None,
+            "working_hours": str(att.working_hours) if att.working_hours else None,
             "status": att.status,
 
-            # merged location
             "location_name": location.location_name if location else None,
             "latitude": location.latitude if location else None,
             "longitude": location.longitude if location else None,
@@ -941,7 +936,6 @@ def recent_attendance_history(request):
         "count": len(results),
         "results": results
     })
-
 
 
 @api_view(['POST'])
@@ -1200,14 +1194,13 @@ def attendance_calendar(request):
     })
 
 
-
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def attendance_activities(request):
     user = request.user
     days = int(request.GET.get("days", 7))
 
-    end_date = timezone.now().date()
+    end_date = timezone.localdate()
     start_date = end_date - timedelta(days=days)
 
     attendances = (
@@ -1219,46 +1212,64 @@ def attendance_activities(request):
     activities = []
 
     for att in attendances:
+
+        # -----------------------
+        # CHECK-IN EVENT
+        # -----------------------
         if att.check_in:
             check_in_dt = datetime.combine(att.date, att.check_in)
-            location = UserLocation.objects.filter(
-                user=user,
-                created_at__lte=check_in_dt
-            ).order_by('-created_at').first()
+
+            location = (
+                UserLocation.objects
+                .filter(user=user, created_at__lte=check_in_dt)
+                .order_by('-created_at')
+                .first()
+            )
 
             activities.append({
                 "type": "check_in",
                 "label": "Checked In",
+                "date": att.date,
                 "time": att.check_in.strftime("%I:%M %p"),
                 "timestamp": check_in_dt,
                 "location": location.location_name if location else None
             })
 
+        # -----------------------
+        # CHECK-OUT EVENT
+        # -----------------------
         if att.check_out:
             check_out_dt = datetime.combine(att.date, att.check_out)
-            location = UserLocation.objects.filter(
-                user=user,
-                created_at__lte=check_out_dt
-            ).order_by('-created_at').first()
+
+            location = (
+                UserLocation.objects
+                .filter(user=user, created_at__lte=check_out_dt)
+                .order_by('-created_at')
+                .first()
+            )
 
             activities.append({
                 "type": "check_out",
                 "label": "Checked Out",
+                "date": att.date,
                 "time": att.check_out.strftime("%I:%M %p"),
                 "timestamp": check_out_dt,
                 "location": location.location_name if location else None
             })
 
+    # -----------------------
+    # SORT BY TIME (LATEST FIRST)
+    # -----------------------
     activities.sort(key=lambda x: x["timestamp"], reverse=True)
-    for a in activities:
-        a.pop("timestamp")
+
+    # Remove internal field
+    for act in activities:
+        act.pop("timestamp")
 
     return Response({
         "count": len(activities),
         "results": activities
     })
-
-
 
 
 @api_view(['GET'])
