@@ -24,6 +24,8 @@ from .serializers import (
 )
 from .permissions import IsAdmin
 from .utils import calculate_distance, can_approve
+from django.db.models import Avg
+
 
 
 User = get_user_model()
@@ -1196,7 +1198,7 @@ def attendance_calendar(request):
         "month": f"{year}-{month_num:02d}",
         "calendar": calendar
     })
-    
+
 
 
 @api_view(['GET'])
@@ -1263,12 +1265,12 @@ def attendance_activities(request):
 @permission_classes([IsAuthenticated])
 def attendance_tracker(request):
     user = request.user
-    month = request.GET.get('month')  # YYYY-MM
+    month_param = request.GET.get("month")  # YYYY-MM
 
-    if not month:
+    if not month_param:
         return Response({"error": "month=YYYY-MM required"}, status=400)
 
-    year, month = map(int, month.split('-'))
+    year, month = map(int, month_param.split("-"))
 
     qs = Attendance.objects.filter(
         user=user,
@@ -1276,39 +1278,45 @@ def attendance_tracker(request):
         date__month=month
     )
 
-    present_days = qs.filter(status='Present').count()
+    # ✅ COUNT ALL WORKING STATUSES AS PRESENT
+    present_days = qs.filter(
+        status__in=["Present", "Half Day", "Checked In"]
+    ).count()
+
     late_arrivals = qs.filter(late_minutes__gt=0).count()
 
     avg_working = qs.exclude(
         working_hours__isnull=True
-    ).aggregate(avg=Avg('working_hours'))['avg']
+    ).aggregate(avg=Avg("working_hours"))["avg"]
 
-    avg_hours = 0
-    if avg_working:
-        avg_hours = round(avg_working.total_seconds() / 3600, 2)
+    avg_hours = round(avg_working.total_seconds() / 3600, 2) if avg_working else 0
 
-    # -------------------------------------------------
-    # ABSENT CALCULATION (FIXED)
-    # -------------------------------------------------
+    # -----------------------------
+    # ABSENT CALCULATION (CORRECT)
+    # -----------------------------
     total_days = monthrange(year, month)[1]
+    month_start = date(year, month, 1)
+    month_end = date(year, month, total_days)
 
     holidays = Holiday.objects.filter(
-        date__year=year,
-        date__month=month
+        date__range=(month_start, month_end)
     ).count()
 
-    from datetime import date
-    month_start = date(year, month, 1)
-    month_end = date(year, month, monthrange(year, month)[1])
-
+    approved_leave_days = 0
     approved_leaves = Leave.objects.filter(
         user=user,
-        status='Approved',
+        status="Approved",
         start_date__lte=month_end,
         end_date__gte=month_start
-    ).count()
+    )
 
-    working_days = total_days - holidays - approved_leaves
+    for leave in approved_leaves:
+        approved_leave_days += (
+            min(leave.end_date, month_end) -
+            max(leave.start_date, month_start)
+        ).days + 1
+
+    working_days = total_days - holidays - approved_leave_days
     absent_days = max(working_days - present_days, 0)
 
     return Response({

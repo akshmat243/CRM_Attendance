@@ -63,7 +63,6 @@ from rest_framework.permissions import BasePermission
 from django.apps import apps
 from accounts import models
 from accounts.models import Leave, Profile, Holiday, UserLocation
-from django.db.models import Avg
 
 
 logger = logging.getLogger(__name__)
