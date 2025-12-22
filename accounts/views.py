@@ -1202,8 +1202,8 @@ def attendance_calendar(request):
             "day": current_date.day,
             "weekday": current_date.strftime("%a"),
             "status": status_label,
-            "check_in": check_in.strftime("%H:%M:%S") if check_in else None,
-            "check_out": check_out.strftime("%H:%M:%S") if check_out else None,
+            "check_in": check_in.strftime("%H:%M") if check_in else None,
+            "check_out": check_out.strftime("%H:%M") if check_out else None,
             "working_hours": str(working_hours) if working_hours else None
         })
 
