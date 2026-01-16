@@ -5,11 +5,32 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
+from accounts import views
 
 
 urlpatterns = [
     # path('', views.login, name='login'),
     # path('update-password/', views.update_password, name='update_password'),
+    
+    path("attendance/recent-history/", views.recent_attendance_history, name="Recent-history"),
+    path("location/reject/", views.reject_user_location, name="Location_Reject"),
+    path("location/approve/", views.approve_user_location, name="Location_Approve"),
+    path("profile/overview/staff/<str:staff_id>/",profile_overview,name="profile_overview"),
+    path("profile/update/", profile_update, name="profile_update"),
+    path("attendance/calendar/",views.attendance_calendar,name="attendance_calendar"),
+    path("profile/reporting-to/", reporting_to, name="Reporting_To"),
+    path("profile/department-members/", department_members, name="Department_Members"),
+    path("attendance/activities/",views.attendance_activities,name="attendance_activities"),
+
+
+    path('get-location/', views.get_location, name="get-location"),
+    path('see-location/', views.see_location, name="see_location"),
+    path("attendance/tracker/", views.attendance_tracker, name="attendance_tracker"),
+
+
+
+
+
     path('apilogin/', LoginApiView.as_view(), name='apilogin'),
     path('staff_assigned_leads/', staff_assigned_leads.as_view(), name='staff_assigned_leads'),
     path('status-update/', StatusUpdateAPIView.as_view(), name='status-update'),

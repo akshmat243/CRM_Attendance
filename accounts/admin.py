@@ -9,7 +9,9 @@ from openpyxl.styles import Font
 from django.http import HttpResponse
 from datetime import date
 from calendar import monthrange
-from .models import Attendance, User, Task
+from .models import Attendance, User, Task, UserLocation, AllowedLocation
+
+
 
 admin.site.register(WorkLog)
 
@@ -91,8 +93,17 @@ def export_attendance_excel(request):
 
 @admin.register(Leave)
 class LeaveAdmin(admin.ModelAdmin):
-    list_display = ('user', 'date', 'leave_type', 'status')
-    list_filter = ('status', 'leave_type')
+    list_display = (
+        'user',
+        'leave_type',
+        'start_date',
+        'end_date',
+        'total_days',
+        'status',
+        'reason'
+    )
+    list_filter = ('leave_type', 'status')
+
 
 @admin.register(Holiday)
 class HolidayAdmin(admin.ModelAdmin):
@@ -104,3 +115,26 @@ class TaskAdmin(admin.ModelAdmin):
     list_display = ('title', 'assigned_to', 'created_by', 'status', 'due_date', 'created_at')
     list_filter = ('status', 'assigned_to', 'created_by')
     search_fields = ('title', 'description', 'assigned_to__username')
+
+
+
+
+@admin.register(UserLocation)
+class UserLocationAdmin(admin.ModelAdmin):
+    list_display = (
+        'id',
+        'user',
+        'latitude',
+        'longitude',
+        'location_name',
+        'created_at',
+    )
+    list_filter = ('user', 'created_at')
+    search_fields = ('user__username', 'location_name')
+
+
+@admin.register(AllowedLocation)
+class AllowedLocationAdmin(admin.ModelAdmin):
+    list_display = ("user", "latitude", "longitude", "radius_meters")
+    search_fields = ("user__username",)
+

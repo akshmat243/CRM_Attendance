@@ -7,6 +7,8 @@ from django_filters import rest_framework as django_filters
 from datetime import date
 from datetime import datetime, timedelta
 from rest_framework import status, viewsets
+
+# from CRM import accounts
 from .serializers import *
 from .models import *
 from django.shortcuts import render
@@ -59,6 +61,9 @@ from django.utils.timezone import get_current_timezone
 
 from rest_framework.permissions import BasePermission
 from django.apps import apps
+from accounts import models
+from accounts.models import Leave, Profile, Holiday, UserLocation
+
 
 logger = logging.getLogger(__name__)
 User = apps.get_model('home', 'User')
@@ -190,7 +195,6 @@ class MarketingAccessPermission(BasePermission):
 #             res['message'] = "No recored found for entered data"
 #             res['data'] = []
 #             return Response(res, status=status.HTTP_400_BAD_REQUEST)
-
 
 
 
@@ -8757,3 +8761,268 @@ class TodayInterestedCountAPIView(APIView):
         }
 
         return Response(data)
+
+
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def department_members(request):
+    user = request.user
+
+    # ---------------------------
+    # STAFF VIEW
+    # ---------------------------
+    if user.role == "staff":
+        staff = Staff.objects.filter(user=user).first()
+        if not staff or not staff.team_leader:
+            return Response(
+                {"members": []},
+                status=status.HTTP_200_OK
+            )
+
+        team_leader = staff.team_leader
+
+    # ---------------------------
+    # TEAM LEADER VIEW
+    # ---------------------------
+    elif user.role == "team_leader":
+        team_leader = Team_Leader.objects.filter(user=user).first()
+        if not team_leader:
+            return Response(
+                {"members": []},
+                status=status.HTTP_200_OK
+            )
+
+    # ---------------------------
+    # ADMIN / SUPER USER
+    # ---------------------------
+    else:
+        return Response(
+            {"members": []},
+            status=status.HTTP_200_OK
+        )
+
+    members = Staff.objects.filter(team_leader=team_leader).select_related("user")
+
+    present = 0
+    result = []
+
+    for member in members:
+        status_today = today_attendance_status(member.user)
+        if status_today in ["Present", "Checked In"]:
+            present += 1
+
+        result.append({
+            "name": member.name or member.user.username,
+            "status": status_today,
+            "profile_image": (
+                member.user.profile_image.url
+                if member.user.profile_image else None
+            )
+        })
+
+    department = member.user.profile.department if member.user.profile else None
+
+    return Response({
+        "department": department,
+        "summary": {
+            "present": present,
+            "total": members.count()
+        },
+        "members": result
+    })
+
+def today_attendance_status(user):
+    today = timezone.localtime(timezone.now()).date()
+
+    att = Attendance.objects.filter(user=user, date=today).first()
+
+    if not att:
+        return "Yet to check-in"
+
+    if att.check_in and att.check_out:
+        return "Present"
+
+    if att.check_in and not att.check_out:
+        return "Checked In"
+
+    return "Yet to check-in"
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def reporting_to(request):
+    user = request.user
+
+    # ---------------------------
+    # STAFF USER
+    # ---------------------------
+    if user.role == "staff":
+        staff = Staff.objects.filter(user=user).first()
+        if not staff or not staff.team_leader:
+            return Response(
+                {"reporting_to": None},
+                status=status.HTTP_200_OK
+            )
+
+        leader = staff.team_leader
+        leader_user = leader.user
+
+        return Response({
+            "reporting_to": {
+                "name": leader.name or leader_user.username,
+                "designation": "Team Leader",
+                "status": today_attendance_status(leader_user),
+                "profile_image": (
+                    leader_user.profile_image.url
+                    if leader_user.profile_image else None
+                )
+            }
+        })
+
+    # ---------------------------
+    # TEAM LEADER / ADMIN
+    # ---------------------------
+    return Response(
+        {"reporting_to": None},
+        status=status.HTTP_200_OK
+    )
+
+
+
+def can_view_profile(request_user, target_user):
+    # Superuser / Admin → full access
+    if request_user.is_superuser or request_user.role == "admin":
+        return True
+
+    # Staff → only self
+    if request_user.role == "staff":
+        return request_user == target_user
+
+    # Team leader → self + own staff
+    if request_user.role == "team_leader":
+        return Staff.objects.filter(
+            user=target_user,
+            team_leader__user=request_user
+        ).exists() or request_user == target_user
+
+    return False
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def profile_overview(request, staff_id):
+    # -------------------------------------------------
+    # 1. Staff → User → Profile
+    # -------------------------------------------------
+    staff = get_object_or_404(Staff, staff_id=staff_id)
+    user = staff.user
+    profile = user.profile
+
+    # -------------------------------------------------
+    # 2. LEAVE CALCULATION
+    # -------------------------------------------------
+    YEAR = date.today().year
+
+    TOTAL_SICK = 12
+    TOTAL_CASUAL = 12
+
+    sick_used = Leave.objects.filter(
+        user=user,
+        leave_type="Sick",
+        status="Approved",
+        start_date__year=YEAR
+    ).count()
+
+    casual_used = Leave.objects.filter(
+        user=user,
+        leave_type="Casual",
+        status="Approved",
+        start_date__year=YEAR
+    ).count()
+
+    total_used = sick_used + casual_used
+
+    # -------------------------------------------------
+    # 3. RESPONSE
+    # -------------------------------------------------
+    return Response({
+        "user": {
+            "id": user.id,
+            "username": user.username,
+            "role": user.role,
+            "profile_image": user.profile_image.url if user.profile_image else None
+        },
+
+        "contact_info": {
+            "full_name": profile.full_name,
+            "email": user.email,   # ✅ Always from User
+            "phone": profile.phone,
+            "department": profile.department,
+            "designation": profile.designation,
+            "join_date": profile.join_date,
+            "reports_to": profile.reports_to,
+            "address": profile.address
+        },
+
+        "skills_education": {
+            "education": profile.education,
+            "skills": profile.skill_list()
+        },
+
+        # ✅ NEW BLOCK
+        "leave_status": {
+            "sick": {
+                "used": sick_used,
+                "total": TOTAL_SICK
+            },
+            "casual": {
+                "used": casual_used,
+                "total": TOTAL_CASUAL
+            },
+            "total": {
+                "used": total_used,
+                "total": TOTAL_SICK + TOTAL_CASUAL
+            }
+        }
+    })
+
+
+
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def profile_update(request):
+    """
+    Update contact info / skills / education
+    for the LOGGED-IN USER only
+    """
+    user = request.user
+    profile = get_object_or_404(Profile, user=user)
+
+    # -------------------------
+    # Allowed fields only
+    # -------------------------
+    allowed_fields = [
+        "full_name",
+        "phone",
+        "address",
+        "education",
+        "skills",
+    ]
+
+    for field in allowed_fields:
+        if field in request.data:
+            value = request.data.get(field)
+
+            # skills may come as list from frontend
+            if field == "skills" and isinstance(value, list):
+                value = ", ".join(value)
+
+            setattr(profile, field, value)
+
+    profile.save()
+
+    return Response(
+        {"message": "Profile updated successfully"},
+        status=status.HTTP_200_OK
+    )

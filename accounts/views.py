@@ -10,17 +10,23 @@ from django.contrib.auth import alogout, get_user_model
 from django.db.models import Q, Count
 from django.http import HttpResponse
 from calendar import monthrange
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from openpyxl import Workbook
 from openpyxl.styles import Font
 import csv
+
+from home import api
 from .serializers import UserSerializer
-from .models import Attendance, Profile, Leave, Holiday, Task, WorkLog
+from .models import Attendance, Profile, Leave, Holiday, Task, WorkLog, AllowedLocation, UserLocation, extract_lat_lng, get_location_name
 from .serializers import (
     AttendanceSerializer, AttendanceByDateSerializer,
     ProfileSerializer, LeaveSerializer, HolidaySerializer, TaskSerializer
 )
 from .permissions import IsAdmin
+from .utils import calculate_distance, can_approve
+from django.db.models import Avg
+
+
 
 User = get_user_model()
 
@@ -29,35 +35,78 @@ User = get_user_model()
 # 1. CHECK-IN & CHECK-OUT (NEW & FIXED)
 # ————————————————————————————————————————
 @api_view(['POST'])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated])
 def check_in(request):
     user = request.user
     today = date.today()
 
-    # Get IST time correctly
+    # 1️⃣ Latest saved user location
+    user_location = (
+        UserLocation.objects
+        .filter(user=user)
+        .order_by('-created_at')
+        .first()
+    )
+
+    if not user_location:
+        return Response(
+            {"error": "Location not captured. Please refresh and try again."},
+            status=400
+        )
+
+    # 2️⃣ Allowed office location
+    allowed = AllowedLocation.objects.filter(user=user).first()
+    if not allowed:
+        return Response(
+            {"error": "Location not approved yet"},
+            status=403
+        )
+
+
+
+    # 3️⃣ Distance validation
+    distance = calculate_distance(
+        user_location.latitude,
+        user_location.longitude,
+        allowed.latitude,
+        allowed.longitude
+    )
+
+    if distance > allowed.radius_meters:
+        return Response(
+            {
+                "error": "You are outside the allowed check-in zone",
+                "distance_meters": round(distance, 2),
+                "allowed_radius": allowed.radius_meters
+            },
+            status=403
+        )
+
+    # 4️⃣ Save attendance
     ist_now = timezone.localtime(timezone.now())
 
     attendance, created = Attendance.objects.get_or_create(
         user=user,
         date=today,
-        defaults={'check_in': ist_now.time(), 'status': 'Present'}
+        defaults={
+            "check_in": ist_now.time(),
+            "status": "Checked In"
+        }
     )
 
     if not created and attendance.check_in:
-        return Response(
-            {"error": "Already checked in today"},
-            status=status.HTTP_409_CONFLICT
-        )
+        return Response({"error": "Already checked in today"}, status=409)
 
     attendance.check_in = ist_now.time()
-    attendance.status = 'Present'
+    attendance.status = "Checked In"
     attendance.save()
 
     return Response({
         "message": "Checked in successfully",
-        "check_in": ist_now.strftime("%H:%M:%S")   # Always IST
+        "check_in": ist_now.strftime("%H:%M:%S"),
+        "location": user_location.location_name,
+        "distance_meters": round(distance, 2)
     })
-
 
 
 @api_view(['POST'])
@@ -74,45 +123,66 @@ def check_out(request):
     if attendance.check_out:
         return Response({"error": "Already checked out"}, status=409)
 
-    # -----------------------------------------------
-    # 1. VALIDATE form inputs
-    # -----------------------------------------------
-    project = request.data.get("project")
-    work = request.data.get("work")
-    time_taken = request.data.get("time_taken")
-    progress = request.data.get("progress")
+    user_location = (
+        UserLocation.objects
+        .filter(user=user)
+        .order_by('-created_at')
+        .first()
+    )
 
+    if not user_location:
+        return Response({"error": "Location not captured"}, status=400)
+
+    allowed = AllowedLocation.objects.filter(user=user).first()
+    if not allowed:
+        return Response(
+            {"error": "Location not approved yet"},
+            status=403
+        )
+
+
+
+    distance = calculate_distance(
+        user_location.latitude,
+        user_location.longitude,
+        allowed.latitude,
+        allowed.longitude
+    )
+
+    if distance > allowed.radius_meters:
+        return Response(
+            {
+                "error": "Outside allowed check-out zone",
+                "distance_meters": round(distance, 2),
+                "allowed_radius": allowed.radius_meters
+            },
+            status=403
+        )
+
+    project = request.data.get("project")
     if not project:
         return Response({"error": "Project name required"}, status=400)
 
-    # -----------------------------------------------
-    # 2. Convert to IST
-    # -----------------------------------------------
     ist_now = timezone.localtime(timezone.now())
-
-    # -----------------------------------------------
-    # 3. Save Attendance checkout time
-    # -----------------------------------------------
     attendance.check_out = ist_now.time()
     attendance.save()
 
-    # -----------------------------------------------
-    # 4. Create WorkLog entry
-    # -----------------------------------------------
     WorkLog.objects.create(
         user=user,
         date=today,
         project=project,
-        work=work,
-        time_taken=time_taken,
-        progress=progress,
+        work=request.data.get("work"),
+        time_taken=request.data.get("time_taken"),
+        progress=request.data.get("progress"),
         check_in=attendance.check_in,
         check_out=ist_now.time()
     )
 
     return Response({
         "message": "Checked out successfully",
-        "check_out": ist_now.strftime("%H:%M:%S")
+        "check_out": ist_now.strftime("%H:%M:%S"),
+        "location": user_location.location_name,
+        "distance_meters": round(distance, 2)
     })
 
 
@@ -490,13 +560,62 @@ def dashboard(request):
 def request_leave(request):
     serializer = LeaveSerializer(data=request.data)
     if serializer.is_valid():
-        # Pass user directly to save() → overrides read_only
         leave = serializer.save(user=request.user)
         return Response({
             "message": "Leave request submitted",
             "leave": LeaveSerializer(leave).data
         }, status=201)
+
     return Response(serializer.errors, status=400)
+
+
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def my_leaves(request):
+    leaves = (
+        Leave.objects
+        .filter(user=request.user)
+        .order_by('-created_at')
+    )
+
+    serializer = LeaveSerializer(leaves, many=True)
+    return Response({
+        "count": leaves.count(),
+        "leaves": serializer.data
+    })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def leave_history(request):
+    """
+    Shows which leave, from when to when, how many days, and status
+    """
+    leaves = (
+        Leave.objects
+        .filter(user=request.user)
+        .order_by('-created_at')
+    )
+
+    data = []
+    for leave in leaves:
+        data.append({
+            "id": leave.id,
+            "leave_type": leave.leave_type,
+            "start_date": leave.start_date,
+            "end_date": leave.end_date,
+            "total_days": (leave.end_date - leave.start_date).days + 1,
+            "status": leave.status,
+            "applied_on": leave.created_at,
+            "reason": leave.reason,
+        })
+
+    return Response({
+        "count": len(data),
+        "leaves": data
+    })
 
 
 @api_view(['PATCH'])
@@ -519,17 +638,69 @@ def update_leave_status(request, leave_id):
     return Response({"message": "Updated", "status": status_val})
 
 
+
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def create_holiday(request):
-    if not request.user.is_superuser and request.user.role != "admin":
-        return Response({"error": "Admin only"}, status=403)
+    user = request.user
 
-    serializer = HolidaySerializer(data=request.data)
-    if serializer.is_valid():
-        serializer.save()
-        return Response({"message": "Holiday added"})
-    return Response(serializer.errors, status=400)
+    if not (user.is_superuser or user.role == "admin"):
+        return Response(
+            {"error": "Admin only"},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    date_val = request.data.get("date")
+    name = request.data.get("name")
+
+    if not date_val or not name:
+        return Response(
+            {"error": "date and name are required"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    if Holiday.objects.filter(date=date_val).exists():
+        return Response(
+            {"error": "Holiday already exists for this date"},
+            status=status.HTTP_409_CONFLICT
+        )
+
+    holiday = Holiday.objects.create(
+        date=date_val,
+        name=name
+    )
+
+    return Response({
+        "message": "Holiday added successfully",
+        "holiday": {
+            "id": holiday.id,
+            "date": holiday.date,
+            "name": holiday.name
+        }
+    }, status=status.HTTP_201_CREATED)
+
+
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def list_holidays(request):
+    holidays = Holiday.objects.all().order_by('date')
+
+    data = [
+        {
+            "id": h.id,
+            "date": h.date,
+            "name": h.name
+        }
+        for h in holidays
+    ]
+
+    return Response({
+        "count": len(data),
+        "results": data
+    })
 
 
 # ————————————————————————————————————————
@@ -708,3 +879,495 @@ def update_task_status(request, task_uid):
     task.status = status_val
     task.save()
     return Response({"message": "Status updated", "status": status_val})
+
+
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def get_location(request):
+    map_link = request.data.get("map_link")
+
+    if not map_link:
+        return Response({"error": "Map link required"}, status=400)
+
+    lat, lng = extract_lat_lng(map_link)
+
+    if lat is None or lng is None:
+        return Response({"error": "Invalid Google Maps link"}, status=400)
+
+    location_name = get_location_name(lat, lng)
+
+    # 1️⃣ Save user live location
+    UserLocation.objects.create(
+        user=request.user,
+        latitude=lat,
+        longitude=lng,
+        location_name=location_name or ""
+    )
+
+    # 2️⃣ CREATE OR UPDATE AllowedLocation (AUTO)
+    AllowedLocation.objects.update_or_create(
+        user=request.user,
+        defaults={
+            "latitude": lat,
+            "longitude": lng,
+            "radius_meters": 300,  # you can change
+        }
+    )
+
+    return Response({
+        "message": "Location saved and set as allowed location",
+        "latitude": lat,
+        "longitude": lng,
+        "location_name": location_name
+    })
+
+
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def see_location(request):
+    loc = UserLocation.objects.filter(user=request.user).last()
+
+    if not loc:
+        return Response({"message": "No location found"})
+
+    return Response({
+        "latitude": loc.latitude,
+        "longitude": loc.longitude,
+        "location_name": loc.location_name,
+        "time": loc.created_at
+    })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def recent_attendance_history(request):
+    user = request.user
+    days = int(request.GET.get("days", 7))
+
+    start_date = timezone.localdate() - timedelta(days=days)
+
+    attendances = (
+        Attendance.objects
+        .filter(user=user, date__gte=start_date)
+        .order_by('-date')
+    )
+
+    results = []
+
+    for att in attendances:
+        location = None
+
+        if att.check_in:
+            check_in_dt = datetime.combine(att.date, att.check_in)
+
+            location = (
+                UserLocation.objects
+                .filter(user=user, created_at__lte=check_in_dt)
+                .order_by('-created_at')
+                .first()
+            )
+
+        results.append({
+            "date": att.date,
+            "check_in": att.check_in.strftime("%H:%M:%S") if att.check_in else None,
+            "check_out": att.check_out.strftime("%H:%M:%S") if att.check_out else None,
+            "working_hours": str(att.working_hours) if att.working_hours else None,
+            "status": att.status,
+
+            "location_name": location.location_name if location else None,
+            "latitude": location.latitude if location else None,
+            "longitude": location.longitude if location else None,
+            "location_time": location.created_at if location else None,
+        })
+
+    return Response({
+        "count": len(results),
+        "results": results
+    })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated , api.IsCustomTeamLeaderUser, api.IsCustomAdminUser, api.IsCustomStaffUser, api.CustomIsSuperuser])
+def approve_user_location(request):
+    if not can_approve(request.user):
+        return Response(
+            {"error": "Approval permission denied"},
+            status=403
+        )
+
+    location_id = request.data.get("location_id")
+
+    if not location_id:
+        return Response({"error": "location_id required"}, status=400)
+
+    try:
+        location = UserLocation.objects.get(id=location_id)
+    except UserLocation.DoesNotExist:
+        return Response({"error": "Location not found"}, status=404)
+
+    # 1️⃣ Mark approved
+    location.status = "APPROVED"
+    location.save()
+
+    # 2️⃣ Save to AllowedLocation
+    AllowedLocation.objects.update_or_create(
+        user=location.user,
+        defaults={
+            "latitude": location.latitude,
+            "longitude": location.longitude,
+            "radius_meters": 300
+        }
+    )
+
+    return Response({
+        "message": "Location approved and activated",
+        "user": location.user.username,
+        "location_name": location.location_name
+    })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated, api.IsCustomTeamLeaderUser, api.IsCustomAdminUser, api.IsCustomStaffUser, api.CustomIsSuperuser])
+def reject_user_location(request):
+    if not can_approve(request.user):
+        return Response({"error": "Permission denied"}, status=403)
+
+    location_id = request.data.get("location_id")
+
+    try:
+        location = UserLocation.objects.get(id=location_id)
+    except UserLocation.DoesNotExist:
+        return Response({"error": "Location not found"}, status=404)
+
+    location.status = "REJECTED"
+    location.save()
+
+    return Response({
+        "message": "Location rejected",
+        "user": location.user.username
+    })
+
+
+
+
+
+
+
+
+
+LEAVE_LIMITS = {
+    "Sick": 12,
+    "Casual": 12,
+}
+
+def calculate_used_leaves(user):
+    leaves = Leave.objects.filter(
+        user=user,
+        status="Approved"
+    )
+
+    used = {
+        "Sick": 0,
+        "Casual": 0,
+    }
+
+    for leave in leaves:
+        days = (leave.end_date - leave.start_date).days + 1
+        if leave.leave_type in used:
+            used[leave.leave_type] += days
+
+    return used
+
+
+def calculate_leave_balance(user):
+    used = {"Sick": 0, "Casual": 0}
+
+    leaves = Leave.objects.filter(
+        user=user,
+        status="Approved"
+    )
+
+    for leave in leaves:
+        days = (leave.end_date - leave.start_date).days + 1
+        if leave.leave_type in used:
+            used[leave.leave_type] += days
+
+    return {
+        "sick": {
+            "used": used["Sick"],
+            "total": LEAVE_LIMITS["Sick"]
+        },
+        "casual": {
+            "used": used["Casual"],
+            "total": LEAVE_LIMITS["Casual"]
+        },
+        "total": {
+            "used": used["Sick"] + used["Casual"],
+            "total": LEAVE_LIMITS["Sick"] + LEAVE_LIMITS["Casual"]
+        }
+    }
+
+
+def format_duration(duration):
+    if not duration:
+        return None
+
+    total_seconds = int(duration.total_seconds())
+    hours = total_seconds // 3600
+    minutes = (total_seconds % 3600) // 60
+
+    return f"{hours:02d}:{minutes:02d}"
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def attendance_calendar(request):
+    user = request.user
+    month = request.GET.get("month")  # YYYY-MM
+
+    if not month:
+        return Response({"error": "month=YYYY-MM required"}, status=400)
+
+    year, month_num = map(int, month.split("-"))
+
+    start_date = date(year, month_num, 1)
+    end_date = date(year, month_num, monthrange(year, month_num)[1])
+    today = timezone.localdate()
+
+    # -----------------------------
+    # FETCH DATA
+    # -----------------------------
+    attendances = Attendance.objects.filter(
+        user=user,
+        date__range=(start_date, end_date)
+    )
+    attendance_map = {a.date: a for a in attendances}
+
+    approved_leaves = Leave.objects.filter(
+        user=user,
+        status="Approved",
+        start_date__lte=end_date,
+        end_date__gte=start_date
+    )
+
+    leave_dates = set()
+    for leave in approved_leaves:
+        d = leave.start_date
+        while d <= leave.end_date:
+            leave_dates.add(d)
+            d += timedelta(days=1)
+
+    holidays = Holiday.objects.filter(
+        date__range=(start_date, end_date)
+    )
+    holiday_dates = {h.date: h.name for h in holidays}
+
+    calendar = []
+
+    
+
+    for day in range(1, end_date.day + 1):
+        current_date = date(year, month_num, day)
+
+        # -----------------------------
+        # FUTURE
+        # -----------------------------
+        if current_date > today:
+            status_label = "Future"
+            check_in = check_out = working_hours = None
+
+        # -----------------------------
+        # ATTENDANCE (USE DB STATUS ✅)
+        # -----------------------------
+        elif current_date in attendance_map:
+            att = attendance_map[current_date]
+            status_label = att.status
+            check_in = att.check_in
+            check_out = att.check_out
+            working_hours = att.working_hours
+
+        # -----------------------------
+        # LEAVE
+        # -----------------------------
+        elif current_date in leave_dates:
+            status_label = "Leave"
+            check_in = check_out = working_hours = None
+
+        # -----------------------------
+        # HOLIDAY
+        # -----------------------------
+        elif current_date in holiday_dates:
+            status_label = "Holiday"
+            check_in = check_out = working_hours = None
+
+        # -----------------------------
+        # DEFAULT
+        # -----------------------------
+        else:
+            status_label = "Absent"
+            check_in = check_out = working_hours = None
+
+        calendar.append({
+            "date": current_date,
+            "day": current_date.day,
+            "weekday": current_date.strftime("%a"),
+            "status": status_label,
+            "check_in": check_in.strftime("%H:%M") if check_in else None,
+            "check_out": check_out.strftime("%H:%M") if check_out else None,
+            "working_hours": format_duration(working_hours)
+
+        })
+
+    return Response({
+        "month": f"{year}-{month_num:02d}",
+        "calendar": calendar
+    })
+
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def attendance_activities(request):
+    user = request.user
+    days = int(request.GET.get("days", 7))
+
+    end_date = timezone.localdate()
+    start_date = end_date - timedelta(days=days)
+
+    attendances = (
+        Attendance.objects
+        .filter(user=user, date__range=(start_date, end_date))
+        .order_by('-date')
+    )
+
+    activities = []
+
+    for att in attendances:
+
+        # -----------------------
+        # CHECK-IN EVENT
+        # -----------------------
+        if att.check_in:
+            check_in_dt = datetime.combine(att.date, att.check_in)
+
+            location = (
+                UserLocation.objects
+                .filter(user=user, created_at__lte=check_in_dt)
+                .order_by('-created_at')
+                .first()
+            )
+
+            activities.append({
+                "type": "check_in",
+                "label": "Checked In",
+                "date": att.date,
+                "time": att.check_in.strftime("%I:%M %p"),
+                "timestamp": check_in_dt,
+                "location": location.location_name if location else None
+            })
+
+        # -----------------------
+        # CHECK-OUT EVENT
+        # -----------------------
+        if att.check_out:
+            check_out_dt = datetime.combine(att.date, att.check_out)
+
+            location = (
+                UserLocation.objects
+                .filter(user=user, created_at__lte=check_out_dt)
+                .order_by('-created_at')
+                .first()
+            )
+
+            activities.append({
+                "type": "check_out",
+                "label": "Checked Out",
+                "date": att.date,
+                "time": att.check_out.strftime("%I:%M %p"),
+                "timestamp": check_out_dt,
+                "location": location.location_name if location else None
+            })
+
+    # -----------------------
+    # SORT BY TIME (LATEST FIRST)
+    # -----------------------
+    activities.sort(key=lambda x: x["timestamp"], reverse=True)
+
+    # Remove internal field
+    for act in activities:
+        act.pop("timestamp")
+
+    return Response({
+        "count": len(activities),
+        "results": activities
+    })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def attendance_tracker(request):
+    user = request.user
+    month_param = request.GET.get("month")  # YYYY-MM
+
+    if not month_param:
+        return Response({"error": "month=YYYY-MM required"}, status=400)
+
+    year, month = map(int, month_param.split("-"))
+
+    qs = Attendance.objects.filter(
+        user=user,
+        date__year=year,
+        date__month=month
+    )
+
+    # ✅ COUNT ALL WORKING STATUSES AS PRESENT
+    present_days = qs.filter(
+        status__in=["Present", "Half Day", "Checked In"]
+    ).count()
+
+    late_arrivals = qs.filter(late_minutes__gt=0).count()
+
+    avg_working = qs.exclude(
+        working_hours__isnull=True
+    ).aggregate(avg=Avg("working_hours"))["avg"]
+
+    avg_hours = round(avg_working.total_seconds() / 3600, 2) if avg_working else 0
+
+    # -----------------------------
+    # ABSENT CALCULATION (CORRECT)
+    # -----------------------------
+    total_days = monthrange(year, month)[1]
+    month_start = date(year, month, 1)
+    month_end = date(year, month, total_days)
+
+    holidays = Holiday.objects.filter(
+        date__range=(month_start, month_end)
+    ).count()
+
+    approved_leave_days = 0
+    approved_leaves = Leave.objects.filter(
+        user=user,
+        status="Approved",
+        start_date__lte=month_end,
+        end_date__gte=month_start
+    )
+
+    for leave in approved_leaves:
+        approved_leave_days += (
+            min(leave.end_date, month_end) -
+            max(leave.start_date, month_start)
+        ).days + 1
+
+    working_days = total_days - holidays - approved_leave_days
+    absent_days = max(working_days - present_days, 0)
+
+    return Response({
+        "present_days": present_days,
+        "absent_days": absent_days,
+        "late_arrivals": late_arrivals,
+        "avg_working_hours": avg_hours
+    })

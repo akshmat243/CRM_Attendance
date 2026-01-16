@@ -35,21 +35,24 @@ class WorkLogSerializer(serializers.ModelSerializer):
 
 
 class AttendanceSerializer(serializers.ModelSerializer):
-    uid = serializers.CharField(read_only=True)
-    full_name = serializers.SerializerMethodField()  # ← Change to method for fallback
-    user_uid = serializers.CharField(source='user.uid', read_only=True)
+    late_minutes = serializers.IntegerField(read_only=True)
+    working_hours = serializers.SerializerMethodField()
 
     class Meta:
         model = Attendance
-        fields = ['uid', 'user_uid', 'full_name', 'date', 'check_in', 'check_out', 'status', 'working_hours']
+        fields = [
+            'uid', 'date', 'check_in', 'check_out',
+            'status', 'late_minutes', 'working_hours'
+        ]
 
-    def get_full_name(self, obj):
-        profile = obj.user.profile
-        return (
-            profile.full_name or 
-            obj.user.get_full_name() or 
-            obj.user.username
-        )
+    def get_working_hours(self, obj):
+        if obj.working_hours:
+            total = obj.working_hours.total_seconds()
+            h = int(total // 3600)
+            m = int((total % 3600) // 60)
+            return f"{h}:{m:02}"
+        return "0:00"
+
 
 
 class AttendanceByDateSerializer(serializers.ModelSerializer):
@@ -70,39 +73,73 @@ class AttendanceByDateSerializer(serializers.ModelSerializer):
 
 class ProfileSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
-    delete_code = serializers.CharField(read_only=True)  # ← Hidden from input
+    delete_code = serializers.CharField(read_only=True)
+    skills = serializers.SerializerMethodField()
 
     class Meta:
         model = Profile
         fields = [
-            'id', 'user', 'full_name', 'phone', 'department',
-            'designation', 'join_date', 'slug', 'delete_code'
+            # System
+            'id',
+            'slug',
+            'delete_code',
+
+            # User
+            'user',
+
+            # Basic Info
+            'full_name',
+            'phone',
+            'department',
+            'designation',
+            'join_date',
+
+            # Contact Information (NEW)
+            'email',
+            'address',
+            'reports_to',
+
+            # Skills & Education (NEW)
+            'education',
+            'skills',
         ]
+
         extra_kwargs = {
-            'delete_code': {'read_only': True}  # ← Never shown in responses
+            'delete_code': {'read_only': True},
+            'slug': {'read_only': True},
+            'user': {'read_only': True},
         }
 
+    def get_skills(self, obj):
+        """
+        Return skills as a list instead of comma-separated string
+        """
+        return obj.skill_list()
+
+
 class LeaveSerializer(serializers.ModelSerializer):
-    user = serializers.ReadOnlyField(source='user.username')
+    total_days = serializers.ReadOnlyField()
 
     class Meta:
         model = Leave
-        fields = ['id', 'user', 'date', 'leave_type', 'status']
-        read_only_fields = ['user', 'status']
+        fields = [
+            'id',
+            'leave_type',
+            'start_date',
+            'end_date',
+            'total_days',
+            'status',
+            'created_at',
+            'reason'
+        ]
 
     def validate(self, data):
-        date = data.get('date')
-        leave_type = data.get('leave_type')
-
-        if not date:
-            raise serializers.ValidationError({"date": "This field is required."})
-        if not leave_type:
-            raise serializers.ValidationError({"leave_type": "This field is required."})
-        if leave_type not in ["Sick", "Casual", "WFH"]:
-            raise serializers.ValidationError({
-                "leave_type": "Must be Sick, Casual, or WFH"
-            })
+        if data['end_date'] < data['start_date']:
+            raise serializers.ValidationError(
+                {"end_date": "End date cannot be before start date"}
+            )
         return data
+
 
 
 

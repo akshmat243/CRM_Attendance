@@ -6337,3 +6337,5 @@ def pending_inquiry_lists(request, status):
             'inquiry_data':inquiries_data,
         }
         return render(request, "admin_dashboard/staff/inquiry_lits.html", context)
+
+

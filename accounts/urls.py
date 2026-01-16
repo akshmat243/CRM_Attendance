@@ -28,6 +28,9 @@ from accounts.views import (
     my_tasks,
     all_tasks,
     update_task_status,
+    my_leaves,
+    leave_history,
+    list_holidays
 )
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
@@ -85,7 +88,10 @@ urlpatterns = [
     path("dashboard/", dashboard, name="dashboard"),
     path("leave/request/", request_leave),
     path('leave/update/<int:leave_id>/', update_leave_status),
-    path("holiday/create/", create_holiday),
+    path("leaves/leave_history", my_leaves, name="Leave_Request"),
+    path('leaves/leave_history/', leave_history, name='leave_history'),
+    path("holidays/", list_holidays),
+    path("holidays/create/", create_holiday),
     path('profiles/<slug:slug>/', ProfileDetailBySlug.as_view(), name='profile-detail-slug'),
 
         # Task Management
