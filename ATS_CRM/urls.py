@@ -44,7 +44,8 @@ urlpatterns = [
     path('swagger/', schema_view.with_ui('swagger',
                                          cache_timeout=0), name='schema-swagger-ui'),
     path("ckeditor5/", include('django_ckeditor_5.urls')),
-    path('accounts/', include('accounts.urls'))
+    path('accounts/', include('accounts.urls')),
+    path('api/projects/', include('project_ms.urls'))
 ]
 
 

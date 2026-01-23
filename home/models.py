@@ -29,7 +29,7 @@ class User(AbstractUser):
     is_it_staff     = models.BooleanField(default=False)
 
     # NEW SUPERUSER ROLE FLAG
-    is_super_user  = models.BooleanField(default=False)
+    is_superuser  = models.BooleanField(default=False)
 
     # NEW ROLE FIELD (needed for accounts app)
     ROLES = (
@@ -54,7 +54,7 @@ class User(AbstractUser):
 
     # AUTO-SYNC BETWEEN BOOLEAN FIELDS → ROLE FIELD
     def save(self, *args, **kwargs):
-        if self.is_super_user:
+        if self.is_superuser:
             self.role = "super_user"
         elif self.is_admin:
             self.role = "admin"

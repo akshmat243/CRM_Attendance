@@ -1,0 +1,1 @@
+default_app_config = "project_ms.apps.ProjectMsConfig"

@@ -53,6 +53,8 @@ INSTALLED_APPS = [
     'propertie',
     'loan',
     'accounts',
+    'project_ms',
+    'permissions',
 ]
 
 ASGI_APPLICATION = 'ATS_CRM.asgi.application'
