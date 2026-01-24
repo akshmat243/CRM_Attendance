@@ -9026,3 +9026,54 @@ def profile_update(request):
         {"message": "Profile updated successfully"},
         status=status.HTTP_200_OK
     )
+
+
+class AddFreelancerAPIView(APIView):
+    """
+    API to add Freelancer or IT Staff.
+    Logic mirrors the 'add_freelancer' view.
+    Access: Superuser OR Admin only.
+    """
+    permission_classes = [IsAuthenticated,CustomIsSuperuser , IsCustomAdminUser]
+    parser_classes = [MultiPartParser, FormParser] # For handling file uploads
+
+    def post(self, request, format=None):
+        serializer = AddFreelancerSerializer(data=request.data, context={'request': request})
+        
+        if serializer.is_valid():
+            try:
+                staff_instance = serializer.save()
+                
+                # Activity Log (Optional - based on your style)
+                try:
+                    user_type = "Super User" if request.user.is_superuser else "Admin User"
+                    ip = request.META.get('HTTP_X_FORWARDED_FOR', request.META.get('REMOTE_ADDR'))
+                    tagline = f"New Freelancer/Staff ({staff_instance.name}) added by {user_type}"
+                    
+                    # Logic to find admin for log
+                    admin_log = None
+                    if request.user.is_admin:
+                        admin_log = Admin.objects.filter(self_user=request.user).last()
+
+                    ActivityLog.objects.create(
+                        admin=admin_log, # Might be null if superuser
+                        user=request.user if request.user.is_superuser else None,
+                        description=tagline,
+                        ip_address=ip,
+                        email=request.user.email,
+                        user_type=user_type,
+                        activity_type="Freelancer Created",
+                        name=request.user.name
+                    )
+                except Exception:
+                    pass # Log fail shouldn't stop the response
+
+                return Response({
+                    "message": "Profile created successfully. Please wait for review.",
+                    "data": StaffProfileSerializer(staff_instance).data
+                }, status=status.HTTP_201_CREATED)
+                
+            except Exception as e:
+                return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
