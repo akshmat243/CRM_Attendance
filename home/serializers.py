@@ -398,6 +398,9 @@ class StaffCreateSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=True, style={'input_type': 'password'})
     profile_image = serializers.FileField(required=False, allow_null=True)
     team_leader = serializers.PrimaryKeyRelatedField(queryset=Team_Leader.objects.all(), required=True)
+    
+    is_freelancer = serializers.BooleanField(required=False, default=False)
+    is_it_staff = serializers.BooleanField(required=False, default=False)
 
     class Meta:
         model = Staff
@@ -405,11 +408,18 @@ class StaffCreateSerializer(serializers.ModelSerializer):
             'team_leader', 'name', 'email', 'mobile', 'password', 'profile_image',
             'address', 'city', 'state', 'pincode', 'dob', 'pancard', 
             'aadharCard', 'marksheet', 'degree', 'account_number', 
-            'upi_id', 'bank_name', 'ifsc_code', 'salary'
+            'upi_id', 'bank_name', 'ifsc_code', 'salary', 'is_freelancer', 'is_it_staff'
         ]
         extra_kwargs = {
             'email': {'required': True}
         }
+        
+    def validate(self, attrs):
+        if attrs.get("is_freelancer") and attrs.get("is_it_staff"):
+            raise serializers.ValidationError(
+                "User cannot be Freelancer and IT Staff at the same time"
+            )
+        return attrs
 
     def validate_email(self, value):
         if User.objects.filter(email=value).exists():
@@ -425,13 +435,19 @@ class StaffCreateSerializer(serializers.ModelSerializer):
         email = validated_data.get('email')
         name = validated_data.get('name')
         mobile = validated_data.get('mobile')
+        is_freelancer = validated_data.pop('is_freelancer', False)
+        is_it_staff = validated_data.pop('is_it_staff', False)
+        
+        is_staff_new = not is_freelancer and not is_it_staff
 
         
         try:
             new_user = User.objects.create_user(
                 username=email, email=email, password=password,
                 profile_image=profile_image, name=name,
-                mobile=mobile, is_staff_new=True
+                mobile=mobile, is_staff_new=is_staff_new,
+                is_freelancer=is_freelancer,
+                is_it_staff=is_it_staff,
             )
         except IntegrityError as e:
             raise serializers.ValidationError(f"Error creating user: {e}")
