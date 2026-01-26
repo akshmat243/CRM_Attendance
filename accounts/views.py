@@ -32,13 +32,13 @@ User = get_user_model()
 
 
 
-@api_view(['POST'])
+@api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def check_in(request):
     user = request.user
     today = date.today()
 
-    # 🔒 1️⃣ FORCE latitude & longitude
+    # 🔒 1️⃣ Require latitude & longitude
     latitude = request.data.get("latitude")
     longitude = request.data.get("longitude")
 
@@ -48,7 +48,6 @@ def check_in(request):
             status=400
         )
 
-    # 🔒 2️⃣ Validate numeric values
     try:
         latitude = float(latitude)
         longitude = float(longitude)
@@ -58,14 +57,13 @@ def check_in(request):
             status=400
         )
 
-    # 🔒 3️⃣ Validate coordinate range
     if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
         return Response(
             {"error": "Invalid GPS coordinates"},
             status=400
         )
 
-    # 🔒 4️⃣ Get allowed office location
+    # 🔒 2️⃣ Allowed location
     allowed = AllowedLocation.objects.filter(user=user).first()
     if not allowed:
         return Response(
@@ -73,7 +71,13 @@ def check_in(request):
             status=403
         )
 
-    # 🔒 5️⃣ Calculate distance
+    if allowed.latitude is None or allowed.longitude is None:
+        return Response(
+            {"error": "Allowed location not configured"},
+            status=403
+        )
+
+    # 🔒 3️⃣ Distance check
     distance = calculate_distance(
         latitude,
         longitude,
@@ -91,32 +95,36 @@ def check_in(request):
             status=403
         )
 
-    # 🔒 6️⃣ Prevent multiple check-ins
-    if Attendance.objects.filter(user=user, date=today).exists():
+    # 🔒 4️⃣ Prevent duplicate check-in
+    attendance, created = Attendance.objects.get_or_create(
+        user=user,
+        date=today
+    )
+
+    if attendance.check_in:
         return Response(
             {"error": "Already checked in today"},
             status=400
         )
 
-    # 🔒 7️⃣ Save fresh location (audit proof)
+    # 🔒 5️⃣ Save check-in TIME ONLY (model-correct)
+    attendance.check_in = timezone.localtime().time()
+    attendance.save()
+
+    # 🔒 6️⃣ Save location separately (audit trail)
     UserLocation.objects.create(
         user=user,
         latitude=latitude,
-        longitude=longitude
-    )
-
-    # 🔒 8️⃣ Create attendance
-    Attendance.objects.create(
-        user=user,
-        date=today,
-        check_in_time=timezone.now(),
-        latitude=latitude,
         longitude=longitude,
-        distance=round(distance, 2)
+        status="APPROVED"
     )
 
     return Response(
-        {"message": "Check-in successful"},
+        {
+            "message": "Check-in successful",
+            "check_in": attendance.check_in,
+            "status": attendance.status
+        },
         status=200
     )
 
