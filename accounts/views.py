@@ -31,30 +31,39 @@ from django.db.models import Avg
 User = get_user_model()
 
 
-# ————————————————————————————————————————
-# 1. CHECK-IN & CHECK-OUT (NEW & FIXED)
-# ————————————————————————————————————————
-@api_view(['POST'])
+
+@api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def check_in(request):
     user = request.user
     today = date.today()
 
-    # 1️⃣ Latest saved user location
-    user_location = (
-        UserLocation.objects
-        .filter(user=user)
-        .order_by('-created_at')
-        .first()
-    )
+    # 🔒 1️⃣ Require latitude & longitude
+    latitude = request.data.get("latitude")
+    longitude = request.data.get("longitude")
 
-    if not user_location:
+    if latitude is None or longitude is None:
         return Response(
-            {"error": "Location not captured. Please refresh and try again."},
+            {"error": "Latitude and longitude are required"},
             status=400
         )
 
-    # 2️⃣ Allowed office location
+    try:
+        latitude = float(latitude)
+        longitude = float(longitude)
+    except ValueError:
+        return Response(
+            {"error": "Invalid latitude or longitude"},
+            status=400
+        )
+
+    if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
+        return Response(
+            {"error": "Invalid GPS coordinates"},
+            status=400
+        )
+
+    # 🔒 2️⃣ Allowed location
     allowed = AllowedLocation.objects.filter(user=user).first()
     if not allowed:
         return Response(
@@ -62,12 +71,16 @@ def check_in(request):
             status=403
         )
 
+    if allowed.latitude is None or allowed.longitude is None:
+        return Response(
+            {"error": "Allowed location not configured"},
+            status=403
+        )
 
-
-    # 3️⃣ Distance validation
+    # 🔒 3️⃣ Distance check
     distance = calculate_distance(
-        user_location.latitude,
-        user_location.longitude,
+        latitude,
+        longitude,
         allowed.latitude,
         allowed.longitude
     )
@@ -75,39 +88,45 @@ def check_in(request):
     if distance > allowed.radius_meters:
         return Response(
             {
-                "error": "You are outside the allowed check-in zone",
-                "distance_meters": round(distance, 2),
+                "error": "You are outside the allowed location",
+                "distance": round(distance, 2),
                 "allowed_radius": allowed.radius_meters
             },
             status=403
         )
 
-    # 4️⃣ Save attendance
-    ist_now = timezone.localtime(timezone.now())
-
+    # 🔒 4️⃣ Prevent duplicate check-in
     attendance, created = Attendance.objects.get_or_create(
         user=user,
-        date=today,
-        defaults={
-            "check_in": ist_now.time(),
-            "status": "Checked In"
-        }
+        date=today
     )
 
-    if not created and attendance.check_in:
-        return Response({"error": "Already checked in today"}, status=409)
+    if attendance.check_in:
+        return Response(
+            {"error": "Already checked in today"},
+            status=400
+        )
 
-    attendance.check_in = ist_now.time()
-    attendance.status = "Checked In"
+    # 🔒 5️⃣ Save check-in TIME ONLY (model-correct)
+    attendance.check_in = timezone.localtime().time()
     attendance.save()
 
-    return Response({
-        "message": "Checked in successfully",
-        "check_in": ist_now.strftime("%H:%M:%S"),
-        "location": user_location.location_name,
-        "distance_meters": round(distance, 2)
-    })
+    # 🔒 6️⃣ Save location separately (audit trail)
+    UserLocation.objects.create(
+        user=user,
+        latitude=latitude,
+        longitude=longitude,
+        status="APPROVED"
+    )
 
+    return Response(
+        {
+            "message": "Check-in successful",
+            "check_in": attendance.check_in,
+            "status": attendance.status
+        },
+        status=200
+    )
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])

@@ -412,6 +412,8 @@ urlpatterns = [
     path("auto-assign-leads/", AutoAssignLeadsAPIView.as_view(), name="auto-assign-leads"),
 
     path('api/today-interested/', TodayInterestedCountAPIView.as_view(), name='today-interested'),
+    
+    path('api/add-freelancer/', AddFreelancerAPIView.as_view(), name='api_add_freelancer'),
 
    ]   
 

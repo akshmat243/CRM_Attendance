@@ -398,6 +398,9 @@ class StaffCreateSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=True, style={'input_type': 'password'})
     profile_image = serializers.FileField(required=False, allow_null=True)
     team_leader = serializers.PrimaryKeyRelatedField(queryset=Team_Leader.objects.all(), required=True)
+    
+    is_freelancer = serializers.BooleanField(required=False, default=False)
+    is_it_staff = serializers.BooleanField(required=False, default=False)
 
     class Meta:
         model = Staff
@@ -405,11 +408,18 @@ class StaffCreateSerializer(serializers.ModelSerializer):
             'team_leader', 'name', 'email', 'mobile', 'password', 'profile_image',
             'address', 'city', 'state', 'pincode', 'dob', 'pancard', 
             'aadharCard', 'marksheet', 'degree', 'account_number', 
-            'upi_id', 'bank_name', 'ifsc_code', 'salary'
+            'upi_id', 'bank_name', 'ifsc_code', 'salary', 'is_freelancer', 'is_it_staff'
         ]
         extra_kwargs = {
             'email': {'required': True}
         }
+        
+    def validate(self, attrs):
+        if attrs.get("is_freelancer") and attrs.get("is_it_staff"):
+            raise serializers.ValidationError(
+                "User cannot be Freelancer and IT Staff at the same time"
+            )
+        return attrs
 
     def validate_email(self, value):
         if User.objects.filter(email=value).exists():
@@ -425,13 +435,19 @@ class StaffCreateSerializer(serializers.ModelSerializer):
         email = validated_data.get('email')
         name = validated_data.get('name')
         mobile = validated_data.get('mobile')
+        is_freelancer = validated_data.pop('is_freelancer', False)
+        is_it_staff = validated_data.pop('is_it_staff', False)
+        
+        is_staff_new = not is_freelancer and not is_it_staff
 
         
         try:
             new_user = User.objects.create_user(
                 username=email, email=email, password=password,
                 profile_image=profile_image, name=name,
-                mobile=mobile, is_staff_new=True
+                mobile=mobile, is_staff_new=is_staff_new,
+                is_freelancer=is_freelancer,
+                is_it_staff=is_it_staff,
             )
         except IntegrityError as e:
             raise serializers.ValidationError(f"Error creating user: {e}")
@@ -1362,3 +1378,107 @@ class NotificationSerializer(serializers.ModelSerializer):
     class Meta:
         model = ActivityLog
         fields = ['id', 'name', 'user_type', 'activity_type', 'description', 'created_date']
+
+
+class AddFreelancerSerializer(serializers.ModelSerializer):
+    # User model fields inputs
+    password = serializers.CharField(write_only=True, required=True, style={'input_type': 'password'})
+    user_type = serializers.ChoiceField(choices=['freelancer', 'it_staff'], write_only=True)
+    profile_image = serializers.FileField(required=False, allow_null=True)
+    
+    # Referral code field (maps to join_referral in Staff)
+    referral_code = serializers.CharField(source='join_referral', required=False, allow_blank=True)
+
+    class Meta:
+        model = Staff
+        fields = [
+            'name', 'email', 'mobile', 'password', 'user_type', 'profile_image',
+            'address', 'city', 'state', 'pincode', 'referral_code',
+            'dob', 'pancard', 'aadharCard', 'degree', 
+            'account_number', 'upi_id', 'bank_name', 'ifsc_code'
+        ]
+        extra_kwargs = {
+            'email': {'required': True},
+            'mobile': {'required': True},
+            'pancard': {'required': True},     
+            'aadharCard': {'required': True}   
+        }
+
+    # --- VALIDATIONS START ---
+
+    def validate_email(self, value):
+        """Check if Email (Username) is unique in User model"""
+        if User.objects.filter(email=value).exists():
+            raise serializers.ValidationError("Email (Username) Already Exists.")
+        return value
+
+    def validate_mobile(self, value):
+        """Check if Mobile is unique in Staff model"""
+        if Staff.objects.filter(mobile=value).exists():
+            raise serializers.ValidationError("Mobile Number Already Exists.")
+        return value
+
+    def validate_pancard(self, value):
+        """Check if PAN Card is unique"""
+        if value and Staff.objects.filter(pancard__iexact=value).exists():
+            raise serializers.ValidationError("This PAN Card Number is already registered.")
+        return value.upper() 
+
+    def validate_aadharCard(self, value):
+        """Check if Aadhar Card is unique"""
+        if value and Staff.objects.filter(aadharCard=value).exists():
+            raise serializers.ValidationError("This Aadhar Card Number is already registered.")
+        return value
+
+    # --- VALIDATIONS END ---
+
+    def create(self, validated_data):
+        # 1. Extract data
+        password = validated_data.pop('password')
+        user_type = validated_data.pop('user_type')
+        profile_image = validated_data.pop('profile_image', None)
+        
+        email = validated_data.get('email')
+        name = validated_data.get('name')
+        mobile = validated_data.get('mobile')
+
+        # 2. Determine Flags based on user_type
+        is_freelancer = False
+        is_it_staff = False
+        
+        if user_type == "freelancer":
+            is_freelancer = True
+        elif user_type == "it_staff":
+            is_it_staff = True
+
+        # 3. Create User
+        try:
+            user = User.objects.create_user(
+                username=email, 
+                email=email,
+                password=password,
+                name=name,
+                mobile=mobile,
+                profile_image=profile_image,
+                is_staff_new=True,
+                is_freelancer=is_freelancer,
+                is_it_staff=is_it_staff
+            )
+        except Exception as e:
+            raise serializers.ValidationError(f"Error creating user: {e}")
+
+        # 4. Get Team Leader (Logic: Last created Team Leader)
+        team_leader = Team_Leader.objects.filter().last()
+        
+        # 5. Create Staff Profile
+        try:
+            staff = Staff.objects.create(
+                team_leader=team_leader,
+                user=user,
+                **validated_data
+            )
+        except Exception as e:
+            user.delete() # Rollback user if staff creation fails
+            raise serializers.ValidationError(f"Error creating staff profile: {e}")
+
+        return staff
