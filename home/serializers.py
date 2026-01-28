@@ -160,10 +160,11 @@ class DashboardSettingsSerializer(serializers.ModelSerializer):
 # ==========================================================
 
 class ApiStaffSerializer(serializers.ModelSerializer):
+    team_leder_name = serializers.CharField(source='team_leader.name', read_only=True)
     
     class Meta:
         model = Staff
-        fields = ['id', 'name', 'staff_id', 'email', 'mobile']
+        fields = ['id', 'name', 'staff_id', 'email', 'mobile', 'created_date', 'team_leder_name']
 
 
 class ApiLeadUserSerializer(serializers.ModelSerializer):
