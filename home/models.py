@@ -38,6 +38,7 @@ class User(AbstractUser):
         ("team_leader", "Team Leader"),
         ("staff", "Staff"),
         ("freelancer", "Freelancer"),
+        ("it_staff", "IT Staff"),
     )
     role = models.CharField(max_length=20, choices=ROLES, default="staff")
 
@@ -64,6 +65,8 @@ class User(AbstractUser):
             self.role = "staff"
         elif self.is_freelancer:
             self.role = "freelancer"
+        elif self.is_it_staff:
+            self.role = "it_staff"
 
         super().save(*args, **kwargs)
 

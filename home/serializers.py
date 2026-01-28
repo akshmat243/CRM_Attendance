@@ -160,10 +160,11 @@ class DashboardSettingsSerializer(serializers.ModelSerializer):
 # ==========================================================
 
 class ApiStaffSerializer(serializers.ModelSerializer):
+    team_leder_name = serializers.CharField(source='team_leader.name', read_only=True)
     
     class Meta:
         model = Staff
-        fields = ['id', 'name', 'staff_id', 'email', 'mobile']
+        fields = ['id', 'name', 'staff_id', 'email', 'mobile', 'created_date', 'team_leder_name']
 
 
 class ApiLeadUserSerializer(serializers.ModelSerializer):
@@ -1381,104 +1382,122 @@ class NotificationSerializer(serializers.ModelSerializer):
 
 
 class AddFreelancerSerializer(serializers.ModelSerializer):
-    # User model fields inputs
-    password = serializers.CharField(write_only=True, required=True, style={'input_type': 'password'})
-    user_type = serializers.ChoiceField(choices=['freelancer', 'it_staff'], write_only=True)
+    password = serializers.CharField(write_only=True, required=True)
+    user_type = serializers.ChoiceField(
+        choices=['freelancer', 'it_staff'],
+        write_only=True
+    )
     profile_image = serializers.FileField(required=False, allow_null=True)
-    
-    # Referral code field (maps to join_referral in Staff)
-    referral_code = serializers.CharField(source='join_referral', required=False, allow_blank=True)
+
+    # ONLY for SUPERUSER
+    admin_id = serializers.IntegerField(required=False, write_only=True)
+
+    # ONLY for ADMIN
+    team_leader_id = serializers.IntegerField(required=False, write_only=True)
+
+    referral_code = serializers.CharField(
+        source='join_referral',
+        required=False,
+        allow_blank=True
+    )
 
     class Meta:
         model = Staff
         fields = [
             'name', 'email', 'mobile', 'password', 'user_type', 'profile_image',
-            'address', 'city', 'state', 'pincode', 'referral_code',
-            'dob', 'pancard', 'aadharCard', 'degree', 
+            'admin_id', 'team_leader_id',
+            'address', 'city', 'state', 'pincode',
+            'referral_code', 'dob', 'pancard', 'aadharCard', 'degree',
             'account_number', 'upi_id', 'bank_name', 'ifsc_code'
         ]
-        extra_kwargs = {
-            'email': {'required': True},
-            'mobile': {'required': True},
-            'pancard': {'required': True},     
-            'aadharCard': {'required': True}   
-        }
 
-    # --- VALIDATIONS START ---
-
-    def validate_email(self, value):
-        """Check if Email (Username) is unique in User model"""
-        if User.objects.filter(email=value).exists():
-            raise serializers.ValidationError("Email (Username) Already Exists.")
-        return value
-
-    def validate_mobile(self, value):
-        """Check if Mobile is unique in Staff model"""
-        if Staff.objects.filter(mobile=value).exists():
-            raise serializers.ValidationError("Mobile Number Already Exists.")
-        return value
-
-    def validate_pancard(self, value):
-        """Check if PAN Card is unique"""
-        if value and Staff.objects.filter(pancard__iexact=value).exists():
-            raise serializers.ValidationError("This PAN Card Number is already registered.")
-        return value.upper() 
-
-    def validate_aadharCard(self, value):
-        """Check if Aadhar Card is unique"""
-        if value and Staff.objects.filter(aadharCard=value).exists():
-            raise serializers.ValidationError("This Aadhar Card Number is already registered.")
-        return value
-
-    # --- VALIDATIONS END ---
+    # ---------------- CREATE ---------------- #
 
     def create(self, validated_data):
-        # 1. Extract data
-        password = validated_data.pop('password')
-        user_type = validated_data.pop('user_type')
-        profile_image = validated_data.pop('profile_image', None)
-        
-        email = validated_data.get('email')
-        name = validated_data.get('name')
-        mobile = validated_data.get('mobile')
+        request = self.context.get("request")
 
-        # 2. Determine Flags based on user_type
-        is_freelancer = False
-        is_it_staff = False
-        
-        if user_type == "freelancer":
-            is_freelancer = True
-        elif user_type == "it_staff":
-            is_it_staff = True
+        password = validated_data.pop("password")
+        user_type = validated_data.pop("user_type")
+        profile_image = validated_data.pop("profile_image", None)
 
-        # 3. Create User
-        try:
-            user = User.objects.create_user(
-                username=email, 
-                email=email,
-                password=password,
-                name=name,
-                mobile=mobile,
-                profile_image=profile_image,
-                is_staff_new=True,
-                is_freelancer=is_freelancer,
-                is_it_staff=is_it_staff
-            )
-        except Exception as e:
-            raise serializers.ValidationError(f"Error creating user: {e}")
+        admin_id = validated_data.pop("admin_id", None)
+        team_leader_id = validated_data.pop("team_leader_id", None)
 
-        # 4. Get Team Leader (Logic: Last created Team Leader)
-        team_leader = Team_Leader.objects.filter().last()
-        
-        # 5. Create Staff Profile
-        try:
-            staff = Staff.objects.create(
-                team_leader=team_leader,
-                user=user,
-                **validated_data
-            )
-        except Exception as e:
-            user.delete() # Rollback user if staff creation fails
-            raise serializers.ValidationError(f"Error creating staff profile: {e}")
+        # ---------------- USER FLAGS ---------------- #
+        is_freelancer = user_type == "freelancer"
+        is_it_staff = user_type == "it_staff"
+
+        # ---------------- CREATE USER ---------------- #
+        user = User.objects.create_user(
+            username=validated_data["email"],
+            email=validated_data["email"],
+            password=password,
+            name=validated_data.get("name"),
+            mobile=validated_data.get("mobile"),
+            profile_image=profile_image,
+            # is_staff_new=True,
+            is_freelancer=is_freelancer,
+            is_it_staff=is_it_staff
+        )
+
+        # ---------------- ASSIGN TEAM LEADER ---------------- #
+        team_leader = None
+
+        # CASE 1️⃣ SUPERUSER
+        if request.user.is_superuser:
+            if not admin_id:
+                raise serializers.ValidationError(
+                    {"admin_id": "Admin selection is required for superuser"}
+                )
+
+            admin = Admin.objects.filter(id=admin_id).first()
+            if not admin:
+                raise serializers.ValidationError(
+                    {"admin_id": "Invalid admin selected"}
+                )
+
+            team_leader = Team_Leader.objects.filter(admin=admin).last()
+            if not team_leader:
+                raise serializers.ValidationError(
+                    {"team_leader": "No team leader found for this admin"}
+                )
+
+        # CASE 2️⃣ ADMIN
+        elif getattr(request.user, "is_admin", False):
+            if not team_leader_id:
+                raise serializers.ValidationError(
+                    {"team_leader_id": "Team leader selection is required"}
+                )
+
+            team_leader = Team_Leader.objects.filter(
+                id=team_leader_id,
+                admin__self_user=request.user
+            ).first()
+
+            if not team_leader:
+                raise serializers.ValidationError(
+                    {"team_leader_id": "Invalid team leader selected"}
+                )
+
+        # CASE 3️⃣ TEAM LEADER
+        elif getattr(request.user, "is_team_leader", False):
+            team_leader = Team_Leader.objects.filter(
+                self_user=request.user
+            ).first()
+
+            if not team_leader:
+                raise serializers.ValidationError(
+                    "Team leader profile not found"
+                )
+
+        else:
+            raise serializers.ValidationError("Unauthorized role")
+
+        # ---------------- CREATE STAFF ---------------- #
+        staff = Staff.objects.create(
+            user=user,
+            team_leader=team_leader,
+            **validated_data
+        )
 
         return staff

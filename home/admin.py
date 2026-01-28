@@ -63,7 +63,7 @@ class AllUser(admin.ModelAdmin):
     search_fields = ('name',)
     
 class AdminUser(admin.ModelAdmin):
-    list_display = ['user', 'name', 'email', 'admin_id', 'created_date', 'updated_date']
+    list_display = ['id', 'user', 'name', 'email', 'admin_id', 'created_date', 'updated_date']
     search_fields = ('user',)
     list_filter =['user',]
 
