@@ -1435,7 +1435,7 @@ class AddFreelancerSerializer(serializers.ModelSerializer):
             name=validated_data.get("name"),
             mobile=validated_data.get("mobile"),
             profile_image=profile_image,
-            is_staff_new=True,
+            # is_staff_new=True,
             is_freelancer=is_freelancer,
             is_it_staff=is_it_staff
         )
