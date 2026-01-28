@@ -9028,52 +9028,75 @@ def profile_update(request):
     )
 
 
+class IsSuperuserOrAdminOrTeamLeader(BasePermission):
+    def has_permission(self, request, view):
+        return (
+            request.user.is_authenticated and (
+                request.user.is_superuser or
+                getattr(request.user, "is_admin", False) or
+                getattr(request.user, "is_team_leader", False)
+            )
+        )
+
 class AddFreelancerAPIView(APIView):
     """
     API to add Freelancer or IT Staff.
-    Logic mirrors the 'add_freelancer' view.
-    Access: Superuser OR Admin only.
+    Access:
+    - Superuser → selects admin → auto team leader
+    - Admin → selects team leader
+    - Team Leader → auto assigned
     """
-    permission_classes = [IsAuthenticated,CustomIsSuperuser , IsCustomAdminUser]
-    parser_classes = [MultiPartParser, FormParser] # For handling file uploads
+    permission_classes = [IsSuperuserOrAdminOrTeamLeader]
+    parser_classes = [MultiPartParser, FormParser]
 
     def post(self, request, format=None):
-        serializer = AddFreelancerSerializer(data=request.data, context={'request': request})
-        
+        serializer = AddFreelancerSerializer(
+            data=request.data,
+            context={'request': request}
+        )
+
         if serializer.is_valid():
+            staff_instance = serializer.save()
+
+            # -------- Activity Log --------
             try:
-                staff_instance = serializer.save()
-                
-                # Activity Log (Optional - based on your style)
-                try:
-                    user_type = "Super User" if request.user.is_superuser else "Admin User"
-                    ip = request.META.get('HTTP_X_FORWARDED_FOR', request.META.get('REMOTE_ADDR'))
-                    tagline = f"New Freelancer/Staff ({staff_instance.name}) added by {user_type}"
-                    
-                    # Logic to find admin for log
-                    admin_log = None
-                    if request.user.is_admin:
-                        admin_log = Admin.objects.filter(self_user=request.user).last()
+                if request.user.is_superuser:
+                    user_type = "Super User"
+                elif getattr(request.user, "is_admin", False):
+                    user_type = "Admin User"
+                else:
+                    user_type = "Team Leader"
 
-                    ActivityLog.objects.create(
-                        admin=admin_log, # Might be null if superuser
-                        user=request.user if request.user.is_superuser else None,
-                        description=tagline,
-                        ip_address=ip,
-                        email=request.user.email,
-                        user_type=user_type,
-                        activity_type="Freelancer Created",
-                        name=request.user.name
-                    )
-                except Exception:
-                    pass # Log fail shouldn't stop the response
+                ip = request.META.get(
+                    'HTTP_X_FORWARDED_FOR',
+                    request.META.get('REMOTE_ADDR')
+                )
 
-                return Response({
+                admin_log = None
+                if getattr(request.user, "is_admin", False):
+                    admin_log = Admin.objects.filter(
+                        self_user=request.user
+                    ).last()
+
+                ActivityLog.objects.create(
+                    admin=admin_log,
+                    user=request.user if request.user.is_superuser else None,
+                    description=f"New Freelancer/Staff ({staff_instance.name}) added by {user_type}",
+                    ip_address=ip,
+                    email=request.user.email,
+                    user_type=user_type,
+                    activity_type="Freelancer Created",
+                    name=request.user.name
+                )
+            except Exception:
+                pass
+
+            return Response(
+                {
                     "message": "Profile created successfully. Please wait for review.",
                     "data": StaffProfileSerializer(staff_instance).data
-                }, status=status.HTTP_201_CREATED)
-                
-            except Exception as e:
-                return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        
+                },
+                status=status.HTTP_201_CREATED
+            )
+
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
