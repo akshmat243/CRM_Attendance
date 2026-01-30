@@ -55,10 +55,12 @@ class Project(SoftDeleteModel):
 
 class ProjectMember(SoftDeleteModel):
     ROLE_CHOICES = (
-        ("manager", "Manager"),
+        ("super_user", "Super User"),
+        ("admin", "Admin"),
         ("team_leader", "Team Leader"),
         ("staff", "Staff"),
         ("freelancer", "Freelancer"),
+        ("it_staff", "IT Staff"),
     )
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

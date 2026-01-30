@@ -49,7 +49,7 @@ class ProjectAdmin(admin.ModelAdmin):
         "updated_at",
     )
 
-    prepopulated_fields = {"slug": ("name",)}
+    # prepopulated_fields = {"slug": ("name",)}
 
     ordering = ("-created_at",)
 
@@ -115,7 +115,7 @@ class TaskAdmin(SoftDeleteAdmin):
         "updated_at",
     )
 
-    prepopulated_fields = {"slug": ("title",)}
+    # prepopulated_fields = {"slug": ("title",)}
 
     ordering = ("-created_at",)
 
