@@ -23,11 +23,24 @@ class ProjectViewSet(ProtectedModelViewSet):
     read_roles = ["super_user", "admin", "team_leader", "staff", "freelancer", "it_staff"]
 
     def get_queryset(self):
-        return Project.objects.select_related(
+        user = self.request.user
+
+        qs = Project.objects.select_related(
             "created_by"
         ).prefetch_related(
             "project_members__user"
         )
+
+        # Super user sees everything
+        if user.role == "super_user":
+            return qs
+
+        # All other users ONLY see projects they are assigned to
+        return qs.filter(
+            project_members__user=user,
+            project_members__is_deleted=False,   # if soft delete is enabled
+            is_deleted=False
+        ).distinct()
 
 
     def perform_create(self, serializer):
