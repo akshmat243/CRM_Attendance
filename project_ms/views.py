@@ -20,7 +20,7 @@ class ProjectViewSet(ProtectedModelViewSet):
     serializer_class = ProjectSerializer
 
     allowed_roles = ["super_user", "admin", "team_leader"]
-    read_roles = ["super_user", "admin", "team_leader", "staff", "freelancer"]
+    read_roles = ["super_user", "admin", "team_leader", "staff", "freelancer", "it_staff"]
 
     def get_queryset(self):
         return Project.objects.select_related(
@@ -50,7 +50,7 @@ class TaskViewSet(ProtectedModelViewSet):
     serializer_class = TaskSerializer
 
     allowed_roles = ["super_user", "admin", "team_leader", "staff"]
-    read_roles = ["super_user", "admin", "team_leader", "staff", "freelancer"]
+    read_roles = ["super_user", "admin", "team_leader", "staff", "freelancer", "it_staff"]
 
     def get_queryset(self):
         user = self.request.user
@@ -108,7 +108,7 @@ class TaskViewSet(ProtectedModelViewSet):
 class TaskCommentViewSet(ProtectedModelViewSet):
     serializer_class = TaskCommentSerializer
 
-    allowed_roles = ["super_user", "admin", "team_leader", "staff", "freelancer"]
+    allowed_roles = ["super_user", "admin", "team_leader", "staff", "freelancer", "it_staff"]
     read_roles = allowed_roles
 
     def get_queryset(self):
@@ -124,7 +124,7 @@ class TaskActivityViewSet(ProtectedModelViewSet):
     serializer_class = TaskActivitySerializer
     http_method_names = ["get"]
 
-    read_roles = ["super_user", "admin", "team_leader", "staff", "freelancer"]
+    read_roles = ["super_user", "admin", "team_leader", "staff", "freelancer", "it_staff"]
 
     def get_queryset(self):
         user = self.request.user
@@ -140,7 +140,7 @@ class ProjectActivityViewSet(ProtectedModelViewSet):
     serializer_class = ProjectActivitySerializer
     http_method_names = ["get"]
 
-    read_roles = ["super_user", "admin", "team_leader", "staff", "freelancer"]
+    read_roles = ["super_user", "admin", "team_leader", "staff", "freelancer", "it_staff"]
 
     def get_queryset(self):
         user = self.request.user
@@ -158,7 +158,7 @@ class ProjectActivityViewSet(ProtectedModelViewSet):
 class NotificationViewSet(ProtectedModelViewSet):
     serializer_class = NotificationSerializer
 
-    read_roles = ["super_user", "admin", "team_leader", "staff", "freelancer"]
+    read_roles = ["super_user", "admin", "team_leader", "staff", "freelancer", "it_staff"]
     allowed_roles = read_roles
 
     def get_queryset(self):
