@@ -216,3 +216,43 @@ class DashboardStatsSerializer(serializers.Serializer):
     done_tasks = serializers.IntegerField()
 
     overdue_tasks = serializers.IntegerField()
+
+class ActiveTaskListSerializer(serializers.ModelSerializer):
+    project_name = serializers.CharField(
+        source="project.name",
+        read_only=True
+    )
+
+    class Meta:
+        model = Task
+        fields = (
+            "id",
+            "title",
+            "status",
+            "priority",
+            "project_name",
+        )
+
+class UpcomingDeadlineSerializer(serializers.ModelSerializer):
+    project_name = serializers.CharField(
+        source="project.name",
+        read_only=True
+    )
+    days_left = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = Task
+        fields = (
+            "id",
+            "title",
+            "due_date",
+            "days_left",
+            "project_name",
+        )
+        
+class TeamWorkloadSerializer(serializers.Serializer):
+    user_id = serializers.UUIDField()
+    name = serializers.CharField()
+    role = serializers.CharField()
+    task_count = serializers.IntegerField()
+    workload_percent = serializers.IntegerField()
