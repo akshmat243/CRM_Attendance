@@ -62,15 +62,16 @@ def task_commented(sender, instance, created, **kwargs):
 @receiver(post_save, sender=ProjectMember)
 def project_member_added(sender, instance, created, **kwargs):
     if created:
-        TaskActivity.objects.create(
-            task=None,
-            action="updated",
+        ProjectActivity.objects.create(
+            project=instance.project,
+            action="member_added",
             performed_by=instance.assigned_by,
             description=(
                 f"{instance.user} was added to project "
                 f"'{instance.project.name}' as {instance.role}."
             )
         )
+
 
 @receiver(post_save, sender=Project)
 def project_created(sender, instance, created, **kwargs):
@@ -82,17 +83,17 @@ def project_created(sender, instance, created, **kwargs):
             description=f"Project '{instance.name}' was created."
         )
 
-@receiver(post_save, sender=ProjectMember)
-def project_member_added(sender, instance, created, **kwargs):
-    if created:
-        ProjectActivity.objects.create(
-            project=instance.project,
-            action="member_added",
-            performed_by=instance.assigned_by,
-            description=(
-                f"{instance.user} joined project as {instance.role}."
-            )
-        )
+# @receiver(post_save, sender=ProjectMember)
+# def project_member_added(sender, instance, created, **kwargs):
+#     if created:
+#         ProjectActivity.objects.create(
+#             project=instance.project,
+#             action="member_added",
+#             performed_by=instance.assigned_by,
+#             description=(
+#                 f"{instance.user} joined project as {instance.role}."
+#             )
+#         )
 
 @receiver(post_save, sender=Task)
 def project_task_created(sender, instance, created, **kwargs):

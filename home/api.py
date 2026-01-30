@@ -4750,10 +4750,9 @@ class StaffDashboardAPIView(APIView):
             
             end_dt = timezone.make_aware(datetime.combine(parsed_end, datetime.max.time()), tz)
         else:
-           
-            start_dt = timezone.make_aware(datetime.combine(today, datetime.min.time()), tz)
+            start_date = today - timedelta(days=6)  # last 7 days including today
+            start_dt = timezone.make_aware(datetime.combine(start_date, datetime.min.time()), tz)
             end_dt = timezone.make_aware(datetime.combine(today, datetime.max.time()), tz)
-
         
         date_q = Q(updated_date__range=(start_dt, end_dt)) | Q(created_date__range=(start_dt, end_dt))
 
