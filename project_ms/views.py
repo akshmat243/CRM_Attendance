@@ -72,14 +72,25 @@ class TaskViewSet(ProtectedModelViewSet):
             "project",
             "assigned_to",
             "created_by"
+        ).filter(
+            is_deleted=False
         )
 
+        # Super users & admins see everything
         if user.role in ["super_user", "admin"]:
             return qs
 
+        # Team leaders see all tasks in their projects
+        if user.role == "team_leader":
+            return qs.filter(
+                project__project_members__user=user,
+                project__project_members__is_deleted=False
+            ).distinct()
+
+        # Staff / freelancer / IT staff see ONLY their tasks
         return qs.filter(
-            project__project_members__user=user
-        ).distinct()
+            assigned_to=user
+        )
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
