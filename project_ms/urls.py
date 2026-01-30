@@ -26,6 +26,11 @@ from .dashboard_views import (
     DashboardStatsAPIView,
     MyTaskStatsAPIView,
     ProjectTaskStatsAPIView,
+    DashboardCardAPIView,
+    ActiveTasksAPIView,
+    TaskStatusOverviewAPIView,
+    UpcomingDeadlinesAPIView,
+    TeamWorkloadAPIView,
 )
 
 urlpatterns += [
@@ -34,5 +39,19 @@ urlpatterns += [
     path(
         "dashboard/project/<uuid:project_id>/tasks/",
         ProjectTaskStatsAPIView.as_view()
+    ),
+    path("dashboard/cards/", DashboardCardAPIView.as_view()),
+    path("dashboard/active-tasks/", ActiveTasksAPIView.as_view()),
+    path(
+        "dashboard/task-status-overview/",
+        TaskStatusOverviewAPIView.as_view()
+    ),
+    path(
+        "dashboard/upcoming-deadlines/",
+        UpcomingDeadlinesAPIView.as_view()
+    ),
+    path(
+        "dashboard/team-workload/",
+        TeamWorkloadAPIView.as_view()
     ),
 ]

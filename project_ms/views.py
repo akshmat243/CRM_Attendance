@@ -32,7 +32,7 @@ class ProjectViewSet(ProtectedModelViewSet):
         )
 
         # Super user sees everything
-        if user.role == "super_user":
+        if user.role in ["super_user", "admin"]:
             return qs
 
         # All other users ONLY see projects they are assigned to
