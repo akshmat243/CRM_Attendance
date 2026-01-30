@@ -13,7 +13,7 @@ class UserSerializer(serializers.ModelSerializer):
     token_detail = serializers.SerializerMethodField("get_token_detail")
     class Meta:
         model = User 
-        fields = ('id', 'username', 'name', 'email', 'mobile', 'profile_image','is_superuser', 'is_admin', 'is_team_leader', 'is_staff_new', 'is_freelancer', 'role', 'login_time', 'logout_time', 'token_detail',)
+        fields = ('id', 'username', 'name', 'email', 'mobile', 'profile_image','is_superuser', 'is_admin', 'is_team_leader', 'is_staff_new', 'is_freelancer', 'is_it_staff', 'role', 'login_time', 'logout_time', 'token_detail',)
         extra_kwargs = {
             'token_detail': {'read_only': True}
         }
