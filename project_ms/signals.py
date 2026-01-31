@@ -1,6 +1,6 @@
 from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
-
+from home.notifications import notify_user
 from .models import (
     Project,
     ProjectActivity,
@@ -20,6 +20,14 @@ def task_created(sender, instance, created, **kwargs):
             performed_by=instance.created_by,
             description=f"Task '{instance.title}' was created."
         )
+    notify_user(
+        user=instance.created_by,
+        title="Task Created",
+        message=f"Task '{instance.title}' has been created.",
+        notification_type="task",
+        project=instance.project,
+        task=instance,
+    )
 
 @receiver(pre_save, sender=Task)
 def task_updated(sender, instance, **kwargs):
@@ -48,6 +56,14 @@ def task_updated(sender, instance, **kwargs):
             performed_by=instance.created_by,
             description=f"Task assigned to {instance.assigned_to}."
         )
+    notify_user(
+        user=instance.created_by,
+        title="Task Updated",
+        message=f"Task '{instance.title}' has been updated.",
+        notification_type="task",
+        project=instance.project,
+        task=instance,
+    )
 
 @receiver(post_save, sender=TaskComment)
 def task_commented(sender, instance, created, **kwargs):
@@ -58,6 +74,14 @@ def task_commented(sender, instance, created, **kwargs):
             performed_by=instance.commented_by,
             description="A new comment was added."
         )
+    notify_user(
+        user=instance.commented_by,
+        title="New Comment Added",
+        message=f"A new comment was added to task '{instance.task.title}'.",
+        notification_type="comment",
+        project=instance.task.project,
+        task=instance.task,
+    )
 
 @receiver(post_save, sender=ProjectMember)
 def project_member_added(sender, instance, created, **kwargs):
@@ -71,6 +95,14 @@ def project_member_added(sender, instance, created, **kwargs):
                 f"'{instance.project.name}' as {instance.role}."
             )
         )
+    
+    notify_user(
+        user=instance.user,
+        title="Added to Project",
+        message=f"You were added to project '{instance.project.name}' as {instance.role}.",
+        notification_type="project",
+        project=instance.project,
+    )
 
 
 @receiver(post_save, sender=Project)
@@ -104,6 +136,14 @@ def project_task_created(sender, instance, created, **kwargs):
             performed_by=instance.created_by,
             description=f"Task '{instance.title}' was created."
         )
+    notify_user(
+        user=instance.created_by,
+        title="Task Created",
+        message=f"Task '{instance.title}' has been created.",
+        notification_type="task",
+        project=instance.project,
+        task=instance,
+    )
 
 @receiver(pre_save, sender=Task)
 def project_task_status_changed(sender, instance, **kwargs):
@@ -124,6 +164,14 @@ def project_task_status_changed(sender, instance, **kwargs):
                 f"{old.status} → {instance.status}"
             )
         )
+    notify_user(
+        user=instance.created_by,
+        title="Task Updated",
+        message=f"Task '{instance.title}' has been updated.",
+        notification_type="task",
+        project=instance.project,
+        task=instance,
+    )
 
 def notify_project_members(project, title, message, exclude_user=None):
     members = project.project_members.select_related("user")
@@ -139,6 +187,14 @@ def notify_project_members(project, title, message, exclude_user=None):
             notification_type="project",
             project=project
         )
+        notify_user(
+            user=member.user,
+            title=title,
+            message=message,
+            notification_type="project",
+            project=project,
+            task=None,
+        )
 
 @receiver(post_save, sender=Task)
 def notify_task_created(sender, instance, created, **kwargs):
@@ -149,6 +205,14 @@ def notify_task_created(sender, instance, created, **kwargs):
             message=f"Task '{instance.title}' was created.",
             exclude_user=instance.created_by
         )
+    notify_user(
+        user=instance.created_by,
+        title="Task Created",
+        message=f"Task '{instance.title}' has been created.",
+        notification_type="task",
+        project=instance.project,
+        task=instance,
+    )
 
 @receiver(pre_save, sender=Task)
 def notify_task_assignment(sender, instance, **kwargs):
@@ -169,11 +233,13 @@ def notify_task_assignment(sender, instance, **kwargs):
             task=instance
         )
 
-        send_realtime_notification(
-            user_id=instance.assigned_to.id,
-            title="Task Assigned",
-            message=f"You were assigned '{instance.title}'",
-            notif_type="task"
+        notify_user(
+            user=instance.assigned_to,
+            title="New Task Assigned",
+            message=f"Task '{instance.title}' was assigned to you.",
+            notification_type="task",
+            project=instance.project,
+            task=instance,
         )
 
 
@@ -188,20 +254,11 @@ def notify_task_comment(sender, instance, created, **kwargs):
             project=instance.task.project,
             task=instance.task
         )
-
-from asgiref.sync import async_to_sync
-from channels.layers import get_channel_layer
-
-
-def send_realtime_notification(user_id, title, message, notif_type):
-    channel_layer = get_channel_layer()
-
-    async_to_sync(channel_layer.group_send)(
-        f"user_{user_id}",
-        {
-            "type": "send_notification",
-            "title": title,
-            "message": message,
-            "type": notif_type,
-        }
-    )
+        notify_user(
+            user=instance.task.assigned_to,
+            title="New Comment on Your Task",
+            message=f"A new comment was added to task '{instance.task.title}'.",
+            notification_type="comment",
+            project=instance.task.project,
+            task=instance.task,
+        )

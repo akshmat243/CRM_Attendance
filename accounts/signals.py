@@ -2,7 +2,8 @@
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.contrib.auth import get_user_model
-from .models import Profile
+from .models import Profile, Attendance
+from home.utils import send_notification_to_user
 from django.utils.text import slugify
 from django.db.models.signals import pre_save
 import shortuuid
@@ -36,4 +37,12 @@ def auto_fill_profile(sender, instance, created, **kwargs):
 
 
 
+@receiver(post_save, sender=Attendance)
+def attendance_notification(sender, instance, created, **kwargs):
+    if created:
+        send_notification_to_user(
+            instance.user.id,
+            "Attendance",
+            "Attendance marked successfully"
+        )
 

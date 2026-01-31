@@ -9099,3 +9099,16 @@ class AddFreelancerAPIView(APIView):
             )
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+
+from home.utils import send_notification_to_user
+
+class TestNotificationAPIView(APIView):
+    def post(self, request):
+        send_notification_to_user(
+            user_id=request.user.id,
+            title="API Triggered",
+            message="This came from API call test notification."
+        )
+        return Response({"status": "sent"})

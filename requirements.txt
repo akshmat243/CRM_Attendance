@@ -1,3 +1,4 @@
+anyio==4.12.1
 appdirs==1.4.4
 asgiref==3.10.0
 attrs==25.4.0
@@ -6,6 +7,8 @@ certifi==2025.10.5
 channels==4.3.1
 channels_redis==4.3.0
 charset-normalizer==3.4.4
+click==8.3.1
+colorama==0.4.6
 comtypes==1.4.13
 DateTime==5.5
 distlib==0.4.0
@@ -23,6 +26,8 @@ drf-yasg==1.21.11
 et_xmlfile==2.0.0
 filelock==3.20.0
 fs==2.4.16
+h11==0.16.0
+httptools==0.7.1
 idna==3.11
 imutils==0.5.4
 inflection==0.5.1
@@ -43,6 +48,7 @@ platformdirs==4.5.0
 PyJWT==2.10.1
 pypiwin32==223
 python-dateutil==2.9.0.post0
+python-dotenv==1.2.1
 pyttsx3==2.99
 pytz==2025.2
 pywin32==311
@@ -64,5 +70,8 @@ unicode-slugify==0.1.5
 Unidecode==1.4.0
 uritemplate==4.2.0
 urllib3==2.6.3
+uvicorn==0.40.0
 virtualenv==20.35.3
+watchfiles==1.1.1
+websockets==16.0
 zope.interface==8.0.1
