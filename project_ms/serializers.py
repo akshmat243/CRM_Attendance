@@ -66,6 +66,7 @@ class ProjectMemberSerializer(serializers.ModelSerializer):
         validated_data["assigned_by"] = request.user
         return super().create(validated_data)
 
+
 class TaskSerializer(serializers.ModelSerializer):
     project_name = serializers.CharField(
         source="project.name",

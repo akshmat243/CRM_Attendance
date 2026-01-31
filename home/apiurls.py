@@ -414,6 +414,8 @@ urlpatterns = [
     path('api/today-interested/', TodayInterestedCountAPIView.as_view(), name='today-interested'),
     
     path('api/add-freelancer/', AddFreelancerAPIView.as_view(), name='api_add_freelancer'),
+    
+    path("test-notification/", TestNotificationAPIView.as_view()),
 
    ]   
 
