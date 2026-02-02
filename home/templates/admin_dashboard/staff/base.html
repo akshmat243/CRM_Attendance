@@ -10,31 +10,31 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>lead crm</title>
-  <link rel="icon" type="image/png" href="{% static 'assets/images/ats_logo2.jpeg' %}" sizes="16x16">
+  <link rel="icon" type="image/png" href="{% static 'home/assets/images/ats_logo2.jpeg' %}" sizes="16x16">
   <!-- remix icon font css  -->
-  <link rel="stylesheet" href="{% static 'assets/css/remixicon.css' %}">
+  <link rel="stylesheet" href="{% static 'home/assets/css/remixicon.css' %}">
   <!-- BootStrap css -->
-  <link rel="stylesheet" href="{% static 'assets/css/lib/bootstrap.min.css' %}">
+  <link rel="stylesheet" href="{% static 'home/assets/css/lib/bootstrap.min.css' %}">
   <!-- Apex Chart css -->
-  <link rel="stylesheet" href="{% static 'assets/css/lib/apexcharts.css' %}">
+  <link rel="stylesheet" href="{% static 'home/assets/css/lib/apexcharts.css' %}">
   <!-- Data Table css -->
-  <link rel="stylesheet" href="{% static 'assets/css/lib/dataTables.min.css' %}">
+  <link rel="stylesheet" href="{% static 'home/assets/css/lib/dataTables.min.css' %}">
   <!-- Text Editor css -->
-  <link rel="stylesheet" href="{% static 'assets/css/lib/editor-katex.min.css' %}">
-  <link rel="stylesheet" href="{% static 'assets/css/lib/editor.atom-one-dark.min.css' %}">
-  <link rel="stylesheet" href="{% static 'assets/css/lib/editor.quill.snow.css' %}">
+  <link rel="stylesheet" href="{% static 'home/assets/css/lib/editor-katex.min.css' %}">
+  <link rel="stylesheet" href="{% static 'home/assets/css/lib/editor.atom-one-dark.min.css' %}">
+  <link rel="stylesheet" href="{% static 'home/assets/css/lib/editor.quill.snow.css' %}">
   <!-- Date picker css -->
-  <link rel="stylesheet" href="{% static 'assets/css/lib/flatpickr.min.css' %}">
+  <link rel="stylesheet" href="{% static 'home/assets/css/lib/flatpickr.min.css' %}">
   <!-- Calendar css -->
-  <link rel="stylesheet" href="{% static 'assets/css/lib/full-calendar.css' %}">
+  <link rel="stylesheet" href="{% static 'home/assets/css/lib/full-calendar.css' %}">
   <!-- Vector Map css -->
-  <link rel="stylesheet" href="{% static 'assets/css/lib/jquery-jvectormap-2.0.5.css' %}">
+  <link rel="stylesheet" href="{% static 'home/assets/css/lib/jquery-jvectormap-2.0.5.css' %}">
   <!-- Popup css -->
-  <link rel="stylesheet" href="{% static 'assets/css/lib/magnific-popup.css' %}">
+  <link rel="stylesheet" href="{% static 'home/assets/css/lib/magnific-popup.css' %}">
   <!-- Slick Slider css -->
-  <link rel="stylesheet" href="{% static 'assets/css/lib/slick.css' %}">
+  <link rel="stylesheet" href="{% static 'home/assets/css/lib/slick.css' %}">
   <!-- main css -->
-  <link rel="stylesheet" href="{% static 'assets/css/style.css' %}">
+  <link rel="stylesheet" href="{% static 'home/assets/css/style.css' %}">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
@@ -77,7 +77,7 @@
     <div class="bg-white">
       <a href="{% url 'staff_user' %}" class="sidebar-logo">
         <img id="site-logo" alt="site logo" class="light-logo m-auto" width="60px" height="60px">         
-        <img src="{% static 'assets/images/ats_logo2.jpeg' %}" alt="site logo" class="light-logo m-auto side_bar_active d-none"style="width: 100px;">         
+        <img src="{% static 'home/assets/images/ats_logo2.jpeg' %}" alt="site logo" class="light-logo m-auto side_bar_active d-none"style="width: 100px;">         
          <!-- <b
           style="color: #333; transition: color 0.3s ease; font-size: 1.07em;" onmouseover="this.style.color='BLUE'"
           onmouseout="this.style.color='#333'">
@@ -336,7 +336,7 @@
       <button class="btn btn-primary" onclick="closePopup()">Close</button>
     </div>
   
-    <audio id="alert-audio" src="{% static 'audio/follow_up_alert.mp3' %}" preload="auto"></audio>
+    <audio id="alert-audio" src="{% static 'home/audio/follow_up_alert.mp3' %}" preload="auto"></audio>
 
 
     <div class="navbar-header dashboard_sidebar_bg">
@@ -359,7 +359,7 @@
               onmouseover="this.style.color='BLUE'" onmouseout="this.style.color='#333'">
               Vrindavan Real Estate
             </b> -->
-            <!-- <img src="{% static 'assets/images/logo_new.png' %}" alt="site logo" class="light-logo m-auto" style="width: 150px;">          -->
+            <!-- <img src="{% static 'home/assets/images/logo_new.png' %}" alt="site logo" class="light-logo m-auto" style="width: 150px;">          -->
           </a>
         </div>
 
@@ -428,7 +428,7 @@
                     {% if request.user.profile_image %}
                     <img src="{{ request.user.profile_image.url }}" alt="site logo" class="light-logo w-90-px h-90-px rounded-circle m-auto">
                     {% else %}
-                    <img src="{% static 'assets/images/main_profile.jpg' %}" alt="site logo" class="light-logo rounded-circle m-auto">
+                    <img src="{% static 'home/assets/images/main_profile.jpg' %}" alt="site logo" class="light-logo rounded-circle m-auto">
                     {% endif %}
                   </div>
                  
@@ -444,7 +444,7 @@
             <button class="userdropdown" type="button"
               data-bs-toggle="dropdown">
               <p class="mb-0">Welcome {{ request.user.name }}</p>
-              {% comment %} <img src="{% static 'assets/images/user.png' %}" alt="image"
+              {% comment %} <img src="{% static 'home/assets/images/user.png' %}" alt="image"
                 class="w-40-px h-40-px object-fit-cover rounded-circle"> {% endcomment %}
             </button>
             <div class="dropdown-menu to-top px-8 dropdown-menu-sm">
@@ -542,28 +542,28 @@
       </div>
 
   <!-- jQuery library js -->
-  <script src="{% static 'assets/js/lib/jquery-3.7.1.min.js' %}"></script>
+  <script src="{% static 'home/assets/js/lib/jquery-3.7.1.min.js' %}"></script>
   <!-- Bootstrap js -->
-  <script src="{% static 'assets/js/lib/bootstrap.bundle.min.js' %}"></script>
+  <script src="{% static 'home/assets/js/lib/bootstrap.bundle.min.js' %}"></script>
   <!-- Apex Chart js -->
-  <script src="{% static 'assets/js/lib/apexcharts.min.js' %}"></script>
+  <script src="{% static 'home/assets/js/lib/apexcharts.min.js' %}"></script>
   <!-- Data Table js -->
-  <script src="{% static 'assets/js/lib/dataTables.min.js' %}"></script>
+  <script src="{% static 'home/assets/js/lib/dataTables.min.js' %}"></script>
   <!-- Iconify Font js -->
-  <script src="{% static 'assets/js/lib/iconify-icon.min.js' %}"></script>
+  <script src="{% static 'home/assets/js/lib/iconify-icon.min.js' %}"></script>
   <!-- jQuery UI js -->
-  <script src="{% static 'assets/js/lib/jquery-ui.min.js' %}"></script>
+  <script src="{% static 'home/assets/js/lib/jquery-ui.min.js' %}"></script>
   <!-- Vector Map js -->
-  <script src="{% static 'assets/js/lib/jquery-jvectormap-2.0.5.min.js' %}"></script>
-  <script src="{% static 'assets/js/lib/jquery-jvectormap-world-mill-en.js' %}"></script>
+  <script src="{% static 'home/assets/js/lib/jquery-jvectormap-2.0.5.min.js' %}"></script>
+  <script src="{% static 'home/assets/js/lib/jquery-jvectormap-world-mill-en.js' %}"></script>
   <!-- Popup js -->
-  <script src="{% static 'assets/js/lib/magnifc-popup.min.js' %}"></script>
+  <script src="{% static 'home/assets/js/lib/magnifc-popup.min.js' %}"></script>
   <!-- Slick Slider js -->
-  <script src="{% static 'assets/js/lib/slick.min.js' %}"></script>
+  <script src="{% static 'home/assets/js/lib/slick.min.js' %}"></script>
   <!-- main js -->
-  <script src="{% static 'assets/js/app.js' %}"></script>
+  <script src="{% static 'home/assets/js/app.js' %}"></script>
 
-  <script src="{% static 'assets/js/homeOneChart.js' %}"></script>
+  <script src="{% static 'home/assets/js/homeOneChart.js' %}"></script>
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script>
   $(document).ready(function() {

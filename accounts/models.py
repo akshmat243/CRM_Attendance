@@ -265,6 +265,12 @@ class Leave(models.Model):
         ("Sick", "Sick Leave"),
         ("Casual", "Casual Leave"),
         ("Earned", "Earned Leave"),
+        ("Birthday", "Birthday Leave"),
+        ("Maternity", "Maternity Leave"),
+        ("Paternity", "Paternity Leave"),
+        ("Compensatory", "Compensatory Leave"),
+        ("Unpaid", "Unpaid Leave"),
+        ("Elite", "Elite Leave"),
     )
 
     STATUS = (

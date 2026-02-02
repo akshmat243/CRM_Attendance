@@ -17,7 +17,7 @@
   <div class="row gy-4">
       <div class="col-lg-4">
           <div class="user-grid-card position-relative border radius-16 overflow-hidden bg-base h-100">
-              <img src="{% static 'assets/images/user-grid/user-grid-bg1.png' %}" alt="" class="w-100 object-fit-cover">
+              <img src="{% static 'home/assets/images/user-grid/user-grid-bg1.png' %}" alt="" class="w-100 object-fit-cover">
               <div class="pb-24 ms-16 mb-24 me-16 mt--100">
 
                 <div class="userprofiletop">
@@ -25,7 +25,7 @@
                     {% if request.user.profile_image %}
                     <img src="{{ request.user.profile_image.url }}" alt="site logo" class="light-logo rounded-circle m-auto">
                     {% else %}
-                    <img src="{% static 'assets/images/main_profile.jpg' %}" alt="site logo" class="light-logo rounded-circle m-auto">
+                    <img src="{% static 'home/assets/images/main_profile.jpg' %}" alt="site logo" class="light-logo rounded-circle m-auto">
                     {% endif %}
                     <div class="userprofiletoptext">
                         <h6>{{ admin.name }}</h6>
