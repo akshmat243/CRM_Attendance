@@ -5,3 +5,5 @@ TASK_STATUS_FLOW = {
     "blocked": ["in_progress"],
     "done": [],
 }
+
+KANBAN_STATUSES = ["todo", "in_progress", "review", "done"]
