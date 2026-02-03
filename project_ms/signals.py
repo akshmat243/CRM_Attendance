@@ -1,6 +1,7 @@
 from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
 from home.notifications import notify_user
+from .utils import extract_mentions, log_audit, serialize_instance
 from .models import (
     Project,
     ProjectActivity,
@@ -8,7 +9,10 @@ from .models import (
     Task,
     TaskComment,
     TaskActivity,
-    Notification
+    Notification,
+    MilestoneCriteria,
+    Milestone,
+    Sprint,
 )
 
 @receiver(post_save, sender=Task)
@@ -261,4 +265,163 @@ def notify_task_comment(sender, instance, created, **kwargs):
             notification_type="comment",
             project=instance.task.project,
             task=instance.task,
+        )
+        
+        
+        
+@receiver(post_save, sender=Task)
+def auto_close_sprint_on_task_done(sender, instance, **kwargs):
+    sprint = instance.sprint
+
+    if not sprint:
+        return
+
+    # Only if auto-close enabled
+    if not sprint.auto_close:
+        return
+
+    # Only act when task is DONE
+    if instance.status != "done":
+        return
+
+    # Check if any task still not done
+    pending_exists = Task.objects.filter(
+        sprint=sprint,
+        is_deleted=False
+    ).exclude(status="done").exists()
+
+    if not pending_exists:
+        sprint.status = "completed"
+        sprint.save(update_fields=["status"])
+        ProjectActivity.objects.create(
+            project=sprint.project,
+            action="sprint_completed",
+            performed_by=instance.created_by,
+            description=f"Sprint '{sprint.name}' was auto-closed as all tasks are done."
+        )
+        
+@receiver(post_save, sender=MilestoneCriteria)
+def auto_complete_milestone_on_criteria(sender, instance, **kwargs):
+    milestone = instance.milestone
+
+    if milestone.status == "completed":
+        return
+
+    total = milestone.criteria.count()
+    completed = milestone.criteria.filter(is_completed=True).count()
+
+    if total > 0 and total == completed:
+        milestone.status = "completed"
+        milestone.save(update_fields=["status"])
+        ProjectActivity.objects.create(
+            project=milestone.project,
+            action="milestone_completed",
+            performed_by=instance.updated_by,
+            description=f"Milestone '{milestone.name}' was auto-completed as all criteria are met."
+        )
+
+@receiver(post_save, sender=Milestone)
+def milestone_notifications(sender, instance, created, **kwargs):
+    if created:
+        return
+
+    # Blocked
+    if instance.status == "blocked":
+        notify_project_members(
+            project=instance.project,
+            title="Milestone Blocked",
+            message=f"Milestone '{instance.title}' is blocked.",
+            notification_type="project",
+            extra_users=[instance.owner] if instance.owner else None
+        )
+
+    # Completed
+    if instance.status == "completed":
+        notify_project_members(
+            project=instance.project,
+            title="Milestone Completed",
+            message=f"Milestone '{instance.title}' has been completed.",
+            notification_type="project",
+            extra_users=[instance.owner] if instance.owner else None
+        )
+
+@receiver(post_save, sender=Task)
+def task_assignment_notification(sender, instance, created, **kwargs):
+    if instance.assigned_to:
+        notify_user(
+            user=instance.assigned_to,
+            title="Task Assigned",
+            message=f"You have been assigned task '{instance.title}'.",
+            notification_type="task",
+            project=instance.project,
+            task=instance
+        )
+
+@receiver(post_save, sender=TaskComment)
+def task_comment_mentions(sender, instance, created, **kwargs):
+    if not created:
+        return
+
+    mentioned_users = extract_mentions(instance.comment)
+
+    for user in mentioned_users:
+        # Don't notify self
+        if user == instance.user:
+            continue
+
+        notify_user(
+            user=user,
+            title="You were mentioned",
+            message=(
+                f"{instance.user.name or instance.user.username} "
+                f"mentioned you in a comment."
+            ),
+            notification_type="comment",
+            project=instance.task.project,
+            task=instance.task
+        )
+
+
+@receiver(pre_save)
+def capture_old_data(sender, instance, **kwargs):
+    if not instance.pk:
+        return
+
+    try:
+        old_instance = sender.objects.get(pk=instance.pk)
+        instance._old_data = serialize_instance(old_instance)
+    except sender.DoesNotExist:
+        instance._old_data = None
+
+TRACKED_MODELS = (
+    Project,
+    Task,
+    Sprint,
+    Milestone,
+    TaskComment,
+)
+
+
+@receiver(post_save)
+def log_create_update(sender, instance, created, **kwargs):
+    # Ignore system models
+    if sender not in TRACKED_MODELS:
+        return
+
+    user = getattr(instance, "updated_by", None) or getattr(instance, "created_by", None)
+
+    if created:
+        log_audit(
+            user=user,
+            action="create",
+            instance=instance,
+            new_data=serialize_instance(instance)
+        )
+    else:
+        log_audit(
+            user=user,
+            action="update",
+            instance=instance,
+            old_data=getattr(instance, "_old_data", None),
+            new_data=serialize_instance(instance)
         )

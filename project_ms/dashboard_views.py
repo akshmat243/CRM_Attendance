@@ -4,13 +4,14 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from .utils import calculate_percentage, percentage
 from datetime import timedelta
-from .models import Project, Task, ProjectMember
 from django.db.models import Q, Count
 from rest_framework.exceptions import PermissionDenied
 from datetime import date
 from django.db.models import F, ExpressionWrapper, IntegerField
 from django.db.models.functions import Cast
-from .serializers import DashboardStatsSerializer, ActiveTaskListSerializer, UpcomingDeadlineSerializer, TeamWorkloadSerializer
+from .models import Project, Task, ProjectMember, Sprint, SprintMember, Milestone
+from .serializers import DashboardStatsSerializer, ActiveTaskListSerializer, UpcomingDeadlineSerializer, TaskSerializer, MilestoneDashboardSerializer
+from .kanban import KANBAN_STATUSES
 
 class DashboardStatsAPIView(APIView):
     permission_classes = [IsAuthenticated]
@@ -53,6 +54,7 @@ class DashboardStatsAPIView(APIView):
         serializer = DashboardStatsSerializer(data)
         return Response(serializer.data)
 
+
 class MyTaskStatsAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -75,6 +77,7 @@ class MyTaskStatsAPIView(APIView):
         }
 
         return Response(data)
+
 
 class ProjectTaskStatsAPIView(APIView):
     permission_classes = [IsAuthenticated]
@@ -293,6 +296,7 @@ class TaskStatusOverviewAPIView(APIView):
 
         return Response(data)
 
+
 class UpcomingDeadlinesAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -400,3 +404,304 @@ class TeamWorkloadAPIView(APIView):
             })
 
         return Response(data)
+
+
+class SprintCapacityVelocityAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, sprint_id):
+        user = request.user
+
+        sprint = Sprint.objects.filter(
+            id=sprint_id,
+            is_deleted=False
+        ).first()
+
+        if not sprint:
+            return Response(
+                {"detail": "Sprint not found."},
+                status=404
+            )
+
+        # -----------------------------
+        # Capacity
+        # -----------------------------
+        members = SprintMember.objects.select_related(
+            "user"
+        ).filter(sprint=sprint)
+
+        total_capacity = sum(
+            m.capacity_hours for m in members
+        )
+
+        member_data = [
+            {
+                "user": m.user.name or m.user.username,
+                "role": m.role,
+                "capacity_hours": m.capacity_hours
+            }
+            for m in members
+        ]
+
+        # -----------------------------
+        # Velocity
+        # -----------------------------
+        tasks = Task.objects.filter(
+            sprint=sprint,
+            is_deleted=False
+        )
+
+        # Visibility
+        if user.role in ["super_user", "admin"]:
+            visible_tasks = tasks
+
+        elif user.role == "team_leader":
+            visible_tasks = tasks.filter(
+                project__project_members__user=user
+            ).distinct()
+
+        else:
+            visible_tasks = tasks.filter(
+                assigned_to=user
+            )
+
+        total_tasks = visible_tasks.count()
+        completed_tasks = visible_tasks.filter(
+            status="done"
+        ).count()
+
+        completion_rate = 0
+        if total_tasks > 0:
+            completion_rate = round(
+                (completed_tasks / total_tasks) * 100
+            )
+
+        # -----------------------------
+        # Sprint health
+        # -----------------------------
+        if completion_rate >= 80:
+            health = "excellent"
+        elif completion_rate >= 50:
+            health = "on_track"
+        else:
+            health = "at_risk"
+
+        return Response({
+            "sprint_id": sprint.id,
+            "capacity": {
+                "total_hours": total_capacity,
+                "members": member_data
+            },
+            "velocity": {
+                "completed_tasks": completed_tasks,
+                "total_tasks": total_tasks,
+                "completion_rate": completion_rate
+            },
+            "status": health
+        })
+
+
+class SprintBoardAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, sprint_id):
+        user = request.user
+
+        # Validate sprint exists & visible
+        sprint = Sprint.objects.filter(
+            id=sprint_id,
+            is_deleted=False
+        ).first()
+        if not sprint:
+            return Response({"detail": "Sprint not found."}, status=404)
+
+        qs = Task.objects.select_related(
+            "assigned_to",
+            "project"
+        ).filter(
+            sprint_id=sprint_id,
+            is_deleted=False
+        )
+
+        # Visibility rules
+        if user.role in ["super_user", "admin"]:
+            tasks = qs
+
+        elif user.role == "team_leader":
+            tasks = qs.filter(
+                project__project_members__user=user
+            ).distinct()
+
+        else:
+            tasks = qs.filter(
+                assigned_to=user
+            )
+
+        # Group by status
+        board = {status: [] for status in KANBAN_STATUSES}
+        for task in tasks:
+            if task.status in board:
+                board[task.status].append(task)
+
+        # Serialize
+        response = {
+            status: TaskSerializer(board[status], many=True).data
+            for status in KANBAN_STATUSES
+        }
+
+        return Response(response)
+
+
+class SprintProgressAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, sprint_id):
+        user = request.user
+
+        sprint = Sprint.objects.filter(
+            id=sprint_id,
+            is_deleted=False
+        ).first()
+
+        if not sprint:
+            return Response(
+                {"detail": "Sprint not found."},
+                status=404
+            )
+
+        qs = Task.objects.filter(
+            sprint=sprint,
+            is_deleted=False
+        )
+
+        # Visibility rules
+        if user.role in ["super_user", "admin"]:
+            tasks = qs
+
+        elif user.role == "team_leader":
+            tasks = qs.filter(
+                project__project_members__user=user
+            ).distinct()
+
+        else:
+            tasks = qs.filter(
+                assigned_to=user
+            )
+
+        total = tasks.count()
+        done = tasks.filter(status="done").count()
+
+        progress = 0
+        if total > 0:
+            progress = round((done / total) * 100)
+
+        data = {
+            "sprint_id": sprint.id,
+            "total_tasks": total,
+            "completed_tasks": done,
+            "progress_percent": progress,
+            "status_breakdown": {
+                "todo": tasks.filter(status="todo").count(),
+                "in_progress": tasks.filter(status="in_progress").count(),
+                "review": tasks.filter(status="review").count(),
+                "done": done,
+            }
+        }
+
+        return Response(data)
+
+
+class SprintBurndownAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, sprint_id):
+        user = request.user
+
+        sprint = Sprint.objects.filter(
+            id=sprint_id,
+            is_deleted=False
+        ).first()
+
+        if not sprint:
+            return Response(
+                {"detail": "Sprint not found."},
+                status=404
+            )
+
+        start = sprint.start_date
+        end = sprint.end_date
+
+        qs = Task.objects.filter(
+            sprint=sprint,
+            is_deleted=False
+        )
+
+        # 🔐 Visibility rules
+        if user.role in ["super_user", "admin"]:
+            tasks = qs
+
+        elif user.role == "team_leader":
+            tasks = qs.filter(
+                project__project_members__user=user
+            ).distinct()
+
+        else:
+            tasks = qs.filter(
+                assigned_to=user
+            )
+
+        dates = []
+        remaining = []
+
+        current_date = start
+        while current_date <= end:
+            remaining_count = tasks.exclude(
+                status="done",
+                updated_at__date__lte=current_date
+            ).count()
+
+            dates.append(current_date)
+            remaining.append(remaining_count)
+
+            current_date += timedelta(days=1)
+
+        return Response({
+            "sprint_id": sprint.id,
+            "dates": dates,
+            "remaining_tasks": remaining
+        })
+
+
+class MilestoneDashboardAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+
+        qs = Milestone.objects.select_related(
+            "project",
+            "sprint",
+            "owner"
+        ).prefetch_related(
+            "criteria"
+        ).filter(is_deleted=False)
+
+        # Optional filters
+        project_id = request.query_params.get("project")
+        sprint_id = request.query_params.get("sprint")
+
+        if project_id:
+            qs = qs.filter(project_id=project_id)
+
+        if sprint_id:
+            qs = qs.filter(sprint_id=sprint_id)
+
+        # Visibility rules
+        if user.role not in ["super_user", "admin"]:
+            qs = qs.filter(
+                project__project_members__user=user,
+                project__project_members__is_deleted=False
+            ).distinct()
+
+        serializer = MilestoneDashboardSerializer(qs, many=True)
+        return Response(serializer.data)

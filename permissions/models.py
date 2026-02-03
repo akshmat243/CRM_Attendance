@@ -83,6 +83,15 @@ class SoftDeleteModel(models.Model):
         abstract = True
 
     def soft_delete(self, user=None):
+        from project_ms.utils import log_audit, serialize_instance
+
+        log_audit(
+            user=user,
+            action="delete",
+            instance=self,
+            old_data=serialize_instance(self),
+        )
+        
         self.is_deleted = True
         self.deleted_at = now()
         self.deleted_by = user
