@@ -69,7 +69,31 @@ logger = logging.getLogger(__name__)
 User = apps.get_model('home', 'User')
 
 
+class IsAdminOrSuperuser(BasePermission):
+    def has_permission(self, request, view):
+        user = request.user
+        return bool(
+            user and user.is_authenticated and
+            (user.is_superuser or user.is_admin)
+        )
 
+
+class GetUsersAPIView(APIView):
+    """
+    Admin / Superuser can view all users
+    """
+    permission_classes = [IsAuthenticated, IsAdminOrSuperuser]
+
+    def get(self, request, format=None):
+        users = User.objects.all().order_by('-id')
+        serializer = UserSerializer(users, many=True)
+        return Response({
+            "count": users.count(),
+            "data": serializer.data
+        }, status=status.HTTP_200_OK)
+        
+        
+        
 class IsLeadOwnerOrAdminOrTeamLeader(BasePermission):
     def has_permission(self, request, view):
         user = request.user
