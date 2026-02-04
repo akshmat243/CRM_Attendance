@@ -27,7 +27,7 @@ urlpatterns = [
     path('see-location/', views.see_location, name="see_location"),
     path("attendance/tracker/", views.attendance_tracker, name="attendance_tracker"),
 
-
+    path('users/', GetUsersAPIView.as_view(), name='get-users'),
 
 
 
