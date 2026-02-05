@@ -31,6 +31,8 @@ from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from django.utils.decorators import method_decorator
 from django.views.decorators.cache import cache_page
+from django.shortcuts import get_object_or_404
+from django.db.models import Q
 
 
 @method_decorator(cache_page(60), name="list")
@@ -67,14 +69,53 @@ class ProjectViewSet(ProtectedModelViewSet):
 
 class ProjectMemberViewSet(ProtectedModelViewSet):
     serializer_class = ProjectMemberSerializer
+    queryset = ProjectMember.objects.select_related(
+        "project",
+        "user",
+        "assigned_by"
+    )
 
     allowed_roles = ["super_user", "admin", "team_leader"]
-    read_roles = ["super_user", "admin", "team_leader"]
+    read_roles = ["super_user", "admin", "team_leader", "staff", "freelancer"]
 
     def get_queryset(self):
-        return ProjectMember.objects.filter(
-            project__project_members__user=self.request.user
-        )
+        user = self.request.user
+        qs = self.queryset.filter(is_deleted=False)
+
+        project_id = self.request.query_params.get("project")
+
+        # 🔹 Filter by project if provided
+        if project_id:
+            project = get_object_or_404(
+                Project,
+                id=project_id,
+                is_deleted=False
+            )
+
+            # 🔐 Access control
+            if user.role not in ["super_user", "admin"]:
+                is_member = ProjectMember.objects.filter(
+                    project=project,
+                    user=user,
+                    is_deleted=False
+                ).exists()
+
+                if not is_member:
+                    return ProjectMember.objects.none()
+
+            qs = qs.filter(project=project)
+
+        # 🔹 Non-admin users see only their projects
+        if user.role not in ["super_user", "admin"]:
+            qs = qs.filter(
+                Q(user=user) |
+                Q(project__project_members__user=user)
+            ).distinct()
+
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(assigned_by=self.request.user)
 
 
 class SprintViewSet(ProtectedModelViewSet):
