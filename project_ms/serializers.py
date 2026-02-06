@@ -580,3 +580,40 @@ class AuditLogSerializer(serializers.ModelSerializer):
         fields = "__all__"
         # read_only_fields = "__all__"
         
+
+class SprintHistorySerializer(serializers.ModelSerializer):
+    performed_by_name = serializers.CharField(
+        source="user.name",
+        read_only=True
+    )
+
+    class Meta:
+        model = AuditLog
+        fields = (
+            "id",
+            "action",
+            "model_name",
+            "old_data",
+            "new_data",
+            "performed_by_name",
+            "created_at",
+        )
+
+
+class MilestoneHistorySerializer(serializers.ModelSerializer):
+    performed_by_name = serializers.CharField(
+        source="user.name",
+        read_only=True
+    )
+
+    class Meta:
+        model = AuditLog
+        fields = (
+            "id",
+            "action",
+            "model_name",
+            "old_data",
+            "new_data",
+            "performed_by_name",
+            "created_at",
+        )

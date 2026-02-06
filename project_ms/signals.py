@@ -331,7 +331,7 @@ def milestone_notifications(sender, instance, created, **kwargs):
             project=instance.project,
             title="Milestone Blocked",
             message=f"Milestone '{instance.title}' is blocked.",
-            notification_type="project",
+            notification_type="milestone",
             extra_users=[instance.owner] if instance.owner else None
         )
 
