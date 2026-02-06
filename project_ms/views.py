@@ -20,6 +20,8 @@ from .serializers import (
     AuditLogSerializer,
     TaskKanbanUpdateSerializer,
     MilestoneCriteriaUpdateSerializer,
+    SprintHistorySerializer,
+    MilestoneHistorySerializer,
 )
 from django.db import transaction
 from django.core.exceptions import ValidationError, PermissionDenied
@@ -32,7 +34,8 @@ from rest_framework.permissions import IsAuthenticated
 from django.utils.decorators import method_decorator
 from django.views.decorators.cache import cache_page
 from django.shortcuts import get_object_or_404
-from django.db.models import Q
+from django.db.models import Q, Sum
+from django.utils.timezone import now, timedelta
 
 
 @method_decorator(cache_page(60), name="list")
@@ -65,6 +68,19 @@ class ProjectViewSet(ProtectedModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
+        
+    @action(detail=True, methods=["get"], url_path="backlog")
+    def backlog(self, request, pk=None):
+        project = self.get_object()
+
+        tasks = Task.objects.filter(
+            project=project,
+            sprint__isnull=True,
+            is_deleted=False
+        ).exclude(status="done")
+
+        return Response(TaskSerializer(tasks, many=True).data)
+
 
 
 class ProjectMemberViewSet(ProtectedModelViewSet):
@@ -243,6 +259,240 @@ class SprintViewSet(ProtectedModelViewSet):
         return Response({
             "message": "Sprint members updated successfully."
         })
+    
+    @action(detail=True, methods=["get"], url_path="history")
+    def history(self, request, pk=None):
+        sprint = self.get_object()
+
+        # 🔐 Access control
+        if request.user.role not in ["super_user", "admin"]:
+            is_member = sprint.project.project_members.filter(
+                user=request.user,
+                is_deleted=False
+            ).exists()
+
+            if not is_member:
+                return Response(
+                    {"detail": "You do not have access to this sprint."},
+                    status=403
+                )
+
+        logs = AuditLog.objects.filter(
+            model_name__in=["Sprint", "Task"],
+            object_id__in=[
+                str(sprint.id)
+            ] + list(
+                sprint.tasks.values_list("id", flat=True)
+            )
+        ).select_related(
+            "user"
+        ).order_by("-created_at")
+
+        serializer = SprintHistorySerializer(logs, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=["get"], url_path="summary")
+    def summary(self, request, pk=None):
+        sprint = self.get_object()
+
+        tasks = sprint.tasks.filter(is_deleted=False)
+
+        total_points = tasks.aggregate(
+            total=models.Sum("estimated_hours")
+        )["total"] or 0
+
+        completed_points = tasks.filter(
+            status="done"
+        ).aggregate(
+            total=models.Sum("estimated_hours")
+        )["total"] or 0
+
+        days_left = (sprint.end_date - now().date()).days if sprint.end_date else None
+
+        progress = int((completed_points / total_points) * 100) if total_points else 0
+
+        return Response({
+            "sprint_name": sprint.name,
+            "sprint_code": sprint.code,
+            "status": sprint.status,
+            "start_date": sprint.start_date,
+            "end_date": sprint.end_date,
+            "days_left": days_left,
+            "story_points_target": sprint.story_points_target,
+            "story_points_completed": completed_points,
+            "progress_percent": progress,
+            "health": "healthy" if progress >= 50 else "at_risk"
+        })
+
+    @action(detail=True, methods=["get"], url_path="board")
+    def board(self, request, pk=None):
+        sprint = self.get_object()
+
+        tasks = sprint.tasks.filter(is_deleted=False)
+
+        def serialize(qs):
+            return TaskSerializer(qs, many=True).data
+
+        return Response({
+            "todo": serialize(tasks.filter(status="todo")),
+            "in_progress": serialize(tasks.filter(status="in_progress")),
+            "review": serialize(tasks.filter(status="review")),
+            "done": serialize(tasks.filter(status="done")),
+        })
+    
+    @action(detail=True, methods=["get"], url_path="items")
+    def items(self, request, pk=None):
+        sprint = self.get_object()
+
+        tasks = sprint.tasks.filter(is_deleted=False).order_by("position")
+
+        return Response({
+            "count": tasks.count(),
+            "items": TaskSerializer(tasks, many=True).data
+        })
+
+    @action(detail=True, methods=["post"], url_path="add-task")
+    def add_task(self, request, pk=None):
+        sprint = self.get_object()
+        task_id = request.data.get("task_id")
+
+        task = get_object_or_404(
+            Task,
+            id=task_id,
+            project=sprint.project,
+            is_deleted=False
+        )
+
+        task.sprint = sprint
+        task.position = sprint.tasks.count()
+        task.updated_by = request.user
+        task.save()
+
+        return Response({"detail": "Task added to sprint"})
+
+    @action(detail=True, methods=["get"], url_path="capacity")
+    def capacity(self, request, pk=None):
+        sprint = self.get_object()
+
+        data = []
+        members = sprint.project.project_members.select_related("user")
+
+        for member in members:
+            tasks = sprint.tasks.filter(assigned_to=member.user)
+
+            used = tasks.aggregate(
+                total=models.Sum("estimated_hours")
+            )["total"] or 0
+
+            capacity = sprint.default_capacity_hours or 40
+            percent = int((used / capacity) * 100) if capacity else 0
+
+            if percent >= 100:
+                data.append({
+                    "user": member.user.name,
+                    "used": used,
+                    "capacity": capacity,
+                    "percent": percent,
+                    "warning": True
+                })
+
+        return Response(data)
+
+    @action(detail=True, methods=["get"], url_path="analytics")
+    def analytics(self, request, pk=None):
+        sprint = self.get_object()
+
+        if request.user.role not in ["super_user", "admin"]:
+            if not sprint.project.project_members.filter(
+                user=request.user,
+                is_deleted=False
+            ).exists():
+                return Response({"detail": "Forbidden"}, status=403)
+
+        tasks = sprint.tasks.filter(is_deleted=False)
+        total_points = tasks.aggregate(
+            total=Sum("estimated_hours")
+        )["total"] or 0
+
+        # 📊 Burndown
+        burndown = []
+        sprint_days = (sprint.end_date - sprint.start_date).days + 1
+
+        remaining = total_points
+        completed_by_date = {}
+
+        for task in tasks.filter(status="done", completed_at__isnull=False):
+            day = task.completed_at.date()
+            completed_by_date.setdefault(day, 0)
+            completed_by_date[day] += task.estimated_hours or 0
+
+        for i in range(sprint_days):
+            day = sprint.start_date + timedelta(days=i)
+            remaining -= completed_by_date.get(day, 0)
+
+            ideal_remaining = max(
+                total_points - (total_points / sprint_days) * i,
+                0
+            )
+
+            burndown.append({
+                "day": day.isoformat(),
+                "ideal": round(ideal_remaining, 2),
+                "actual": max(remaining, 0)
+            })
+        
+        completed_sprints = Sprint.objects.filter(
+            project=sprint.project,
+            status="completed"
+        ).order_by("-end_date")[:5]
+
+        velocities = []
+
+        for s in completed_sprints:
+            points = s.tasks.filter(
+                status="done"
+            ).aggregate(
+                total=Sum("estimated_hours")
+            )["total"] or 0
+            velocities.append(points)
+
+        velocity = round(sum(velocities) / len(velocities), 1) if velocities else 0
+
+        completed_points = tasks.filter(
+            status="done"
+        ).aggregate(
+            total=Sum("estimated_hours")
+        )["total"] or 0
+
+        completion_percent = int(
+            (completed_points / total_points) * 100
+        ) if total_points else 0
+
+        carry_over = tasks.exclude(status="done").count()
+
+        actual_hours = tasks.aggregate(
+            total=Sum("estimated_hours")
+        )["total"] or 0
+
+        if completion_percent >= 80:
+            health = "healthy"
+        elif completion_percent >= 50:
+            health = "at_risk"
+        else:
+            health = "critical"
+
+        return Response({
+            "burndown": burndown,
+            "velocity": velocity,
+            "metrics": {
+                "completion_percent": completion_percent,
+                "carry_over_tasks": carry_over,
+                "estimated_vs_actual": total_points - completed_points,
+            },
+            "health": health
+        })
+
+
 
 
 class MilestoneViewSet(ProtectedModelViewSet):
@@ -335,6 +585,36 @@ class MilestoneViewSet(ProtectedModelViewSet):
             "total": total,
         })
 
+    @action(detail=True, methods=["get"], url_path="history")
+    def history(self, request, pk=None):
+        milestone = self.get_object()
+
+        # 🔐 Access control
+        if request.user.role not in ["super_user", "admin"]:
+            is_member = milestone.project.project_members.filter(
+                user=request.user,
+                is_deleted=False
+            ).exists()
+
+            if not is_member:
+                return Response(
+                    {"detail": "You do not have access to this milestone."},
+                    status=403
+                )
+
+        # 🔍 Collect related task IDs
+        task_ids = milestone.tasks.values_list("id", flat=True)
+
+        logs = AuditLog.objects.filter(
+            model_name__in=["Milestone", "Task"],
+            object_id__in=[str(milestone.id)] + list(task_ids)
+        ).select_related(
+            "user"
+        ).order_by("-created_at")
+
+        serializer = MilestoneHistorySerializer(logs, many=True)
+        return Response(serializer.data)
+    
 
 class TaskViewSet(ProtectedModelViewSet):
     serializer_class = TaskSerializer
@@ -449,7 +729,6 @@ class TaskViewSet(ProtectedModelViewSet):
         task.position = request.data.get("position", task.position)
         task.save(update_fields=["position"])
         return Response({"message": "Position updated"})
-
 
 
 class SprintTaskListAPIView(APIView):
