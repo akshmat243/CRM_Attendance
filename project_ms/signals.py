@@ -24,14 +24,16 @@ def task_created(sender, instance, created, **kwargs):
             performed_by=instance.created_by,
             description=f"Task '{instance.title}' was created."
         )
-    notify_user(
-        user=instance.created_by,
-        title="Task Created",
-        message=f"Task '{instance.title}' has been created.",
-        notification_type="task",
-        project=instance.project,
-        task=instance,
-    )
+    # if instance.assigned_to:
+    #     notify_user(
+    #         user=instance.assigned_to,
+    #         title="Task assigned",
+    #         message=f"You were assigned task '{instance.title}'",
+    #         notification_type="task",
+    #         project=instance.project,
+    #         task=instance
+    #     )
+
 
 @receiver(pre_save, sender=Task)
 def task_updated(sender, instance, **kwargs):
@@ -140,14 +142,14 @@ def project_task_created(sender, instance, created, **kwargs):
             performed_by=instance.created_by,
             description=f"Task '{instance.title}' was created."
         )
-    notify_user(
-        user=instance.created_by,
-        title="Task Created",
-        message=f"Task '{instance.title}' has been created.",
-        notification_type="task",
-        project=instance.project,
-        task=instance,
-    )
+    # notify_user(
+    #     user=instance.assigned_to if instance.assigned_to else instance.created_by,
+    #     title="Task Created",
+    #     message=f"Task '{instance.title}' has been created.",
+    #     notification_type="task",
+    #     project=instance.project,
+    #     task=instance,
+    # )
 
 @receiver(pre_save, sender=Task)
 def project_task_status_changed(sender, instance, **kwargs):
@@ -207,10 +209,10 @@ def notify_task_created(sender, instance, created, **kwargs):
             project=instance.project,
             title="New Task Created",
             message=f"Task '{instance.title}' was created.",
-            exclude_user=instance.created_by
+            exclude_user=instance.assigned_to if instance.assigned_to else instance.created_by
         )
     notify_user(
-        user=instance.created_by,
+        user=instance.assigned_to if instance.assigned_to else instance.created_by,
         title="Task Created",
         message=f"Task '{instance.title}' has been created.",
         notification_type="task",
