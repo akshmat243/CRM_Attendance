@@ -767,9 +767,23 @@ class TaskCommentViewSet(ProtectedModelViewSet):
     read_roles = allowed_roles
 
     def get_queryset(self):
-        return TaskComment.objects.filter(
-            task__project__project_members__user=self.request.user
+        user = self.request.user
+
+        qs = TaskComment.objects.select_related(
+            "task",
+            "commented_by"
         )
+
+        # 🔐 Admins see everything
+        if user.role in ["super_user", "admin"]:
+            return qs
+
+        return qs.filter(
+            Q(task__project__project_members__user=user) |
+            Q(commented_by=user)
+        ).distinct()
+
+
 
     def perform_create(self, serializer):
         serializer.save(commented_by=self.request.user)
