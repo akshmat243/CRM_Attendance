@@ -22,7 +22,7 @@ class Project(SoftDeleteModel):
 
     name = models.CharField(max_length=255)
     slug = models.SlugField(unique=True, blank=True)
-    code = models.CharField(max_length=50, unique=True, blank=True)
+    # code = models.CharField(max_length=50, unique=True, blank=True)
 
     description = models.TextField(blank=True)
 
@@ -50,9 +50,9 @@ class Project(SoftDeleteModel):
 
     def save(self, *args, **kwargs):
         
-        if not self.code:
-            with transaction.atomic():
-                self.code = self.generate_unique_code()
+        # if not self.code:
+        #     with transaction.atomic():
+        #         self.code = self.generate_unique_code()
         if not self.slug:
             self.slug = f"{slugify(self.name)}-{uuid.uuid4().hex[:6]}"
         super().save(*args, **kwargs)
