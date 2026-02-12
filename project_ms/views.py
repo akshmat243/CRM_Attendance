@@ -79,7 +79,7 @@ class UserViewSet(ProtectedModelViewSet):
                 "id": t.id,
                 "title": t.title,
                 "status": t.status,
-                "project_code": t.project.code,
+                "project_slug": t.project.slug,
                 "project_name": t.project.name,
             }
             for t in tasks
@@ -105,6 +105,75 @@ class UserViewSet(ProtectedModelViewSet):
         }
 
         return Response(data)
+
+
+from rest_framework.views import APIView
+from rest_framework.permissions import IsAuthenticated
+
+class TeamOverviewAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+
+        if user.role not in ["super_user", "admin"]:
+            return Response({"detail": "Forbidden"}, status=403)
+
+        # 🔹 MEMBERS
+        members = User.objects.filter(
+            role__in=["team_leader", "staff", "freelancer", "it_staff"]
+        )
+
+        rows = []
+
+        for m in members:
+            project_names = ProjectMember.objects.filter(
+                user=m,
+                is_deleted=False
+            ).values_list("project__name", flat=True)
+
+            task_count = Task.objects.filter(
+                assigned_to=m,
+                is_deleted=False
+            ).count()
+
+            rows.append({
+                "id": m.id,
+                "name": m.name,
+                "role": m.role.replace("_", " ").title(),
+                "email": m.email,
+                "projects": list(project_names),
+                "task_count": task_count,
+            })
+
+        # 🔹 TOP STATS
+        total_members = members.count()
+
+        active_projects = ProjectMember.objects.filter(
+            is_deleted=False
+        ).values("project").distinct().count()
+
+        tasks_in_progress = Task.objects.filter(
+            status="in_progress",
+            is_deleted=False
+        ).count()
+
+        last_7_days = now() - timedelta(days=7)
+        completed_last_7 = Task.objects.filter(
+            status="done",
+            updated_at__gte=last_7_days,
+            is_deleted=False
+        ).count()
+
+        return Response({
+            "stats": {
+                "total_members": total_members,
+                "active_projects": active_projects,
+                "tasks_in_progress": tasks_in_progress,
+                "completed_last_7_days": completed_last_7,
+            },
+            "members": rows
+        })
 
 
 

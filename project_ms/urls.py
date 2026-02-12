@@ -14,6 +14,7 @@ from .views import (
     AuditLogViewSet,
     MilestoneViewSet,
     UserViewSet,
+    TeamOverviewAPIView,
 )
 router = routers.DefaultRouter()
 router.register("projects", ProjectViewSet, basename="project")
@@ -36,6 +37,7 @@ urlpatterns = [
     NotificationUnreadCountAPIView.as_view(),
     ),
     path("sprints/<uuid:sprint_id>/tasks/", SprintTaskListAPIView.as_view(),),
+    path("team/overview/", TeamOverviewAPIView.as_view()),
     
 ]
 

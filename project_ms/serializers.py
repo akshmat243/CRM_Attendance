@@ -636,3 +636,13 @@ class UserOverviewSerializer(serializers.Serializer):
     active_projects = serializers.ListField()
 
     last_active = serializers.DateTimeField(allow_null=True)
+
+
+class TeamMemberRowSerializer(serializers.Serializer):
+    id = serializers.UUIDField()
+    name = serializers.CharField()
+    role = serializers.CharField()
+    email = serializers.EmailField()
+
+    projects = serializers.ListField()
+    task_count = serializers.IntegerField()
