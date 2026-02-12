@@ -145,7 +145,7 @@ class ProjectViewSet(ProtectedModelViewSet):
 
         tasks = Task.objects.filter(
             project=project,
-            sprint__isnull=True,
+            # sprint__isnull=True,
             is_deleted=False
         ).exclude(status="done")
 
