@@ -4,6 +4,7 @@ from permissions.models import SoftDeleteModel
 from django.conf import settings
 from django.utils.text import slugify
 from django.utils import timezone
+from django.db import transaction
 
 User = settings.AUTH_USER_MODEL
 
@@ -21,7 +22,7 @@ class Project(SoftDeleteModel):
 
     name = models.CharField(max_length=255)
     slug = models.SlugField(unique=True, blank=True)
-    code = models.CharField(max_length=50, unique=True)
+    code = models.CharField(max_length=50, unique=True, blank=True)
 
     description = models.TextField(blank=True)
 
@@ -50,13 +51,21 @@ class Project(SoftDeleteModel):
     def save(self, *args, **kwargs):
         
         if not self.code:
-            code = f"PRJ-{str(uuid.uuid4())[:8].upper()}"
-            while Project.objects.filter(code=code).exists():
-                code = f"PRJ-{str(uuid.uuid4())[:8].upper()}"
-            self.code = code
+            with transaction.atomic():
+                self.code = self.generate_unique_code()
         if not self.slug:
             self.slug = f"{slugify(self.name)}-{uuid.uuid4().hex[:6]}"
         super().save(*args, **kwargs)
+    
+    def generate_unique_code(self):
+        base = slugify(self.name).upper().replace("-", "")[:4] or "PROJ"
+        counter = 1
+
+        while True:
+            code = f"{base}-{counter:03d}"
+            if not Project.objects.filter(code=code).exists():
+                return code
+            counter += 1
 
     def __str__(self):
         return self.name
