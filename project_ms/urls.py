@@ -13,6 +13,7 @@ from .views import (
     NotificationUnreadCountAPIView,
     AuditLogViewSet,
     MilestoneViewSet,
+    UserViewSet,
 )
 router = routers.DefaultRouter()
 router.register("projects", ProjectViewSet, basename="project")
@@ -25,6 +26,7 @@ router.register("notifications", NotificationViewSet, basename="notification")
 router.register("sprints", SprintViewSet, basename="sprint")
 router.register("audit-logs", AuditLogViewSet, basename="audit-log")
 router.register("milestones", MilestoneViewSet, basename="milestone")
+router.register("users", UserViewSet, basename="user")
 
 
 urlpatterns = [

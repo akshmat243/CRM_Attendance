@@ -36,6 +36,76 @@ from django.views.decorators.cache import cache_page
 from django.shortcuts import get_object_or_404
 from django.db.models import Q, Sum
 from django.utils.timezone import now, timedelta
+from django.contrib.auth import get_user_model
+User = get_user_model()
+from home.serializers import UserSerializer
+
+
+
+class UserViewSet(ProtectedModelViewSet):
+    queryset = User.objects.all()
+    serializer_class = UserSerializer
+
+    allowed_roles = ["super_user", "admin"]
+    read_roles = ["super_user", "admin"]
+
+    @action(detail=True, methods=["get"], url_path="overview")
+    def overview(self, request, pk=None):
+        user = get_object_or_404(User, id=pk)
+
+        # 🔹 Projects
+        project_memberships = ProjectMember.objects.filter(
+            user=user,
+            is_deleted=False
+        ).select_related("project")
+
+        active_projects = [
+            {
+                "id": pm.project.id,
+                "name": pm.project.name,
+                "role": pm.role,
+            }
+            for pm in project_memberships
+        ]
+
+        # 🔹 Tasks
+        tasks = Task.objects.filter(
+            assigned_to=user,
+            is_deleted=False
+        ).select_related("project")
+
+        task_assignments = [
+            {
+                "id": t.id,
+                "title": t.title,
+                "status": t.status,
+                "project_code": t.project.code,
+                "project_name": t.project.name,
+            }
+            for t in tasks
+        ]
+
+        completed_tasks = tasks.filter(status="done").count()
+        pending_tasks = tasks.exclude(status="done").count()
+
+        data = {
+            "id": user.id,
+            "name": user.name,
+            "email": user.email,
+            "role": user.role,
+
+            "total_projects": project_memberships.count(),
+            "completed_tasks": completed_tasks,
+            "pending_tasks": pending_tasks,
+
+            "task_assignments": task_assignments,
+            "active_projects": active_projects,
+
+            "last_active": user.last_login,
+        }
+
+        return Response(data)
+
 
 
 @method_decorator(cache_page(60), name="list")

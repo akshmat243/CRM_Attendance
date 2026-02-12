@@ -617,3 +617,22 @@ class MilestoneHistorySerializer(serializers.ModelSerializer):
             "performed_by_name",
             "created_at",
         )
+
+
+class UserOverviewSerializer(serializers.Serializer):
+    # Basic info
+    id = serializers.UUIDField()
+    name = serializers.CharField()
+    email = serializers.EmailField()
+    role = serializers.CharField()
+
+    # Stats
+    total_projects = serializers.IntegerField()
+    completed_tasks = serializers.IntegerField()
+    pending_tasks = serializers.IntegerField()
+
+    # Lists
+    task_assignments = serializers.ListField()
+    active_projects = serializers.ListField()
+
+    last_active = serializers.DateTimeField(allow_null=True)
